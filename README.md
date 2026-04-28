@@ -2,8 +2,6 @@
 
 Converts Ab Initio graphs into runnable PySpark code. This repo implements the **IBM Network** half of the architecture (Mapping + DML convertor + Code generator). The Parser (Client Network) is a separate workstream and emits its output to Neo4j.
 
-See [plan.md](plan.md) for the full design and phased roadmap.
-
 ## Quick start
 
 ```bash
@@ -38,4 +36,4 @@ spark-submit out/sample_01.py                       # confirm runnable
 
 ## Status
 
-v1 covers six components — `REFORMAT`, `FILTER_BY_EXPRESSION`, `JOIN`, `SORT`, `ROLLUP`, `DEDUP_SORTED` — and the DML scalar primitives. See [plan.md](plan.md) for what's deferred.
+v1 covers six components — `REFORMAT`, `FILTER_BY_EXPRESSION`, `JOIN`, `SORT`, `ROLLUP`, `DEDUP_SORTED` — and the DML scalar primitives.
