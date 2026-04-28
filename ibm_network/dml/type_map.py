@@ -11,6 +11,7 @@ from ibm_network.dml.ast import (
     DmlDatetime,
     DmlDecimal,
     DmlInteger,
+    DmlReal,
     DmlScalar,
     DmlString,
 )
@@ -24,6 +25,8 @@ def spark_type_source(scalar: DmlScalar) -> str:
         return f"DecimalType({precision}, {scalar.scale})"
     if isinstance(scalar, DmlInteger):
         return _integer_source(scalar.size_bytes)
+    if isinstance(scalar, DmlReal):
+        return "FloatType()" if scalar.size_bytes <= 4 else "DoubleType()"
     if isinstance(scalar, DmlString):
         return "StringType()"
     if isinstance(scalar, DmlDate):

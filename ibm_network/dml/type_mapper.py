@@ -19,6 +19,7 @@ from ibm_network.dml.ast import (
     DmlDecimal,
     DmlField,
     DmlInteger,
+    DmlReal,
     DmlRecord,
     DmlScalar,
     DmlString,
@@ -59,6 +60,8 @@ def to_dtype(scalar: DmlScalar) -> "DataType":
         if scalar.size_bytes <= 4:
             return T.IntegerType()
         return T.LongType()
+    if isinstance(scalar, DmlReal):
+        return T.FloatType() if scalar.size_bytes <= 4 else T.DoubleType()
     if isinstance(scalar, DmlString):
         return T.StringType()
     if isinstance(scalar, DmlDate):

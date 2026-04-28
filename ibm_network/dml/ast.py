@@ -16,6 +16,14 @@ class DmlInteger:
 
 
 @dataclass(frozen=True)
+class DmlReal:
+    """IEEE-754 floating point. 4-byte → FloatType, 8-byte → DoubleType."""
+
+    size_bytes: int = 8
+    delimiter: str | None = None
+
+
+@dataclass(frozen=True)
 class DmlString:
     length: int | None = None
     delimiter: str | None = None
@@ -31,7 +39,7 @@ class DmlDatetime:
     format: str = "yyyy-MM-dd HH:mm:ss"
 
 
-DmlScalar = DmlDecimal | DmlInteger | DmlString | DmlDate | DmlDatetime
+DmlScalar = DmlDecimal | DmlInteger | DmlReal | DmlString | DmlDate | DmlDatetime
 
 
 @dataclass(frozen=True)

@@ -56,7 +56,12 @@ def _sample_data_path(tc_id: str) -> Path | None:
 
 
 def _normalize(value: Any) -> Any:
-    """Convert Spark scalars to JSON-comparable forms (matching expected_output.json)."""
+    """Convert Spark scalars to JSON-comparable forms (matching expected_output.json).
+
+    FloatType columns store values in 32-bit precision so a Python literal like
+    ``98.6`` round-trips as ``98.5999984741...``. We round to 4 decimal places to
+    keep TC-004's read-side comparison stable while still catching real bugs.
+    """
     if isinstance(value, dict):
         return {k: _normalize(v) for k, v in value.items()}
     if isinstance(value, list):
@@ -67,6 +72,8 @@ def _normalize(value: Any) -> Any:
         return value.strftime("%Y-%m-%d %H:%M:%S")
     if isinstance(value, datetime.date):
         return value.strftime("%Y-%m-%d")
+    if isinstance(value, float):
+        return round(value, 4)
     return value
 
 

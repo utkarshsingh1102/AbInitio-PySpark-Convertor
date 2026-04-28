@@ -11,6 +11,7 @@ from ibm_network.dml.ast import (
     DmlDecimal,
     DmlField,
     DmlInteger,
+    DmlReal,
     DmlRecord,
     DmlScalar,
     DmlString,
@@ -55,6 +56,11 @@ class _DMLTransformer(Transformer):
     def integer_t(self, items: list[Token]) -> DmlInteger:
         return DmlInteger(size_bytes=int(items[0]))
 
+    def real_t(self, items: list[Token]) -> DmlReal:
+        size = int(_unquote(str(items[0])))
+        delim = _unquote(str(items[1])) if len(items) > 1 else None
+        return DmlReal(size_bytes=size, delimiter=delim)
+
     def string_fixed(self, items: list[Token]) -> DmlString:
         return DmlString(length=int(items[0]))
 
@@ -76,7 +82,7 @@ class _DMLTransformer(Transformer):
     def field(self, items: list[object]) -> DmlField:
         ty = items[0]
         name = str(items[1])
-        assert isinstance(ty, DmlDecimal | DmlInteger | DmlString | DmlDate | DmlDatetime)
+        assert isinstance(ty, DmlDecimal | DmlInteger | DmlReal | DmlString | DmlDate | DmlDatetime)
         return DmlField(name=name, type=ty)
 
     def start(self, items: list[DmlField]) -> DmlRecord:

@@ -13,6 +13,7 @@ from ibm_network.dml.ast import (
     DmlDatetime,
     DmlDecimal,
     DmlInteger,
+    DmlReal,
     DmlRecord,
     DmlScalar,
     DmlString,
@@ -109,6 +110,8 @@ def _sql_cast(scalar: DmlScalar) -> str | None:
         if scalar.size_bytes <= 4:
             return "int"
         return "long"
+    if isinstance(scalar, DmlReal):
+        return "float" if scalar.size_bytes <= 4 else "double"
     if isinstance(scalar, DmlDate):
         return "date"
     if isinstance(scalar, DmlDatetime):

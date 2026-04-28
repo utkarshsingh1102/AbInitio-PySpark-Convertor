@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from enum import Enum
 
-from ibm_network.dml.ast import DmlDecimal, DmlField, DmlInteger, DmlRecord, DmlString
+from ibm_network.dml.ast import DmlDecimal, DmlField, DmlInteger, DmlReal, DmlRecord, DmlString
 
 
 class ReadStrategy(Enum):
@@ -52,7 +52,7 @@ def choose(record: DmlRecord | None) -> ReadStrategy:
 
 def _has_delimiter(field: DmlField) -> bool:
     t = field.type
-    return isinstance(t, (DmlString, DmlDecimal)) and t.delimiter is not None
+    return isinstance(t, (DmlString, DmlDecimal, DmlReal)) and t.delimiter is not None
 
 
 def _is_fixed_width(field: DmlField) -> bool:
@@ -61,6 +61,6 @@ def _is_fixed_width(field: DmlField) -> bool:
         return t.length is not None
     if isinstance(t, DmlDecimal):
         return t.precision is not None and t.delimiter is None
-    if isinstance(t, DmlInteger):
+    if isinstance(t, (DmlInteger, DmlReal)):
         return True
     return False

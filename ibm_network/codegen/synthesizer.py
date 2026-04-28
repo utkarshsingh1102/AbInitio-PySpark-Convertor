@@ -18,7 +18,7 @@ from ibm_network.codegen.llm_client import LLMClient, LLMUnavailableError
 from ibm_network.codegen.prompt import POLISH_SYSTEM, build_polish_prompt
 from ibm_network.codegen.read_strategy import ReadStrategy, choose as choose_read_strategy
 from ibm_network.codegen.source_emitter import render_source_read
-from ibm_network.dml.ast import DmlDecimal, DmlRecord, DmlString
+from ibm_network.dml.ast import DmlDecimal, DmlReal, DmlRecord, DmlString
 from ibm_network.dml.emitter import render_schema
 from ibm_network.dml.parser import parse_dml
 from ibm_network.dml.warnings import (
@@ -164,7 +164,7 @@ def _record_delimiter(record: DmlRecord) -> str | None:
     """
     for f in record.fields:
         t = f.type
-        delim = t.delimiter if isinstance(t, (DmlString, DmlDecimal)) else None
+        delim = t.delimiter if isinstance(t, (DmlString, DmlDecimal, DmlReal)) else None
         if delim and delim != "\n":
             return delim
     return None

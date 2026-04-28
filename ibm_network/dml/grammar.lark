@@ -4,6 +4,7 @@ field: dml_type CNAME ";"
 
 dml_type: decimal_t
         | integer_t
+        | real_t
         | string_t
         | date_t
         | datetime_t
@@ -13,6 +14,8 @@ decimal_args: INT ("," INT)?                       -> decimal_fixed
             | ESCAPED_STRING ("," ESCAPED_STRING)? -> decimal_str_form
 
 integer_t: "integer" "(" INT ")"
+
+real_t: "real" "(" ESCAPED_STRING ("," ESCAPED_STRING)? ")"
 
 string_t: "string" "(" string_args ")"
 string_args: INT                 -> string_fixed
