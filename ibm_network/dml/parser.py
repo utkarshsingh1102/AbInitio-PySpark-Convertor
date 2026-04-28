@@ -34,8 +34,20 @@ class _DMLTransformer(Transformer):
         scale = int(items[1]) if len(items) > 1 else 0
         return DmlDecimal(precision=precision, scale=scale)
 
-    def decimal_delim(self, items: list[Token]) -> DmlDecimal:
-        return DmlDecimal(delimiter=_unquote(str(items[0])))
+    def decimal_str_form(self, items: list[Token]) -> DmlDecimal:
+        """Handle both `decimal(delim)` and `decimal("P.S", delim)` forms.
+
+        The single-string form is delimited integer (LongType downstream).
+        The two-string form encodes precision and scale in the first string.
+        """
+        if len(items) == 1:
+            return DmlDecimal(delimiter=_unquote(str(items[0])))
+        precision_str = _unquote(str(items[0]))
+        delim = _unquote(str(items[1]))
+        if "." in precision_str:
+            p_part, s_part = precision_str.split(".", 1)
+            return DmlDecimal(precision=int(p_part), scale=int(s_part), delimiter=delim)
+        return DmlDecimal(precision=int(precision_str), delimiter=delim)
 
     def decimal_t(self, items: list[DmlDecimal]) -> DmlDecimal:
         return items[0]

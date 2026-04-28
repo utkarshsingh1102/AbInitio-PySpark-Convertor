@@ -9,8 +9,8 @@ dml_type: decimal_t
         | datetime_t
 
 decimal_t: "decimal" "(" decimal_args ")"
-decimal_args: INT ("," INT)?     -> decimal_fixed
-            | ESCAPED_STRING     -> decimal_delim
+decimal_args: INT ("," INT)?                       -> decimal_fixed
+            | ESCAPED_STRING ("," ESCAPED_STRING)? -> decimal_str_form
 
 integer_t: "integer" "(" INT ")"
 
