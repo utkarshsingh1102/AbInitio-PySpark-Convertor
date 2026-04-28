@@ -147,7 +147,11 @@ def _emit_source(comp: Component) -> tuple[tuple[str, str] | None, str, list[str
 
     delimiter = _record_delimiter(record) if record is not None else None
     read_body = render_source_read(
-        strategy, schema_var=schema_var, input_path=input_path, delimiter=delimiter
+        strategy,
+        schema_var=schema_var,
+        input_path=input_path,
+        delimiter=delimiter,
+        record=record,
     )
     return schema_entry, f"{var} = {read_body}", notes
 

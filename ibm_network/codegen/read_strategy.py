@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from enum import Enum
 
-from ibm_network.dml.ast import DmlRecord
+from ibm_network.dml.ast import DmlDecimal, DmlField, DmlInteger, DmlRecord, DmlString
 
 
 class ReadStrategy(Enum):
@@ -32,10 +32,35 @@ class ReadStrategy(Enum):
 def choose(record: DmlRecord | None) -> ReadStrategy:
     """Pick a read strategy for the given parsed DML record.
 
-    Returns `CSV_INFER` if there is no parsed record (DML missing or unparseable),
-    otherwise `CSV_DELIMITED`. Phase 3 will route fixed-width / mixed-delim /
-    binary records to the matching strategy.
+    Decision tree:
+      - no record               → CSV_INFER (Spark guesses types)
+      - any field has delimiter → CSV_DELIMITED (TC-001 / TC-007 / etc.)
+      - all fields fixed-width  → TEXT_SUBSTRING (TC-002)
+      - otherwise               → CSV_DELIMITED (conservative default)
+
+    Mixed delimiters, variable vectors, EBCDIC, packed decimals will be
+    routed to their dedicated strategies in later TCs.
     """
     if record is None:
         return ReadStrategy.CSV_INFER
+    if any(_has_delimiter(f) for f in record.fields):
+        return ReadStrategy.CSV_DELIMITED
+    if record.fields and all(_is_fixed_width(f) for f in record.fields):
+        return ReadStrategy.TEXT_SUBSTRING
     return ReadStrategy.CSV_DELIMITED
+
+
+def _has_delimiter(field: DmlField) -> bool:
+    t = field.type
+    return isinstance(t, (DmlString, DmlDecimal)) and t.delimiter is not None
+
+
+def _is_fixed_width(field: DmlField) -> bool:
+    t = field.type
+    if isinstance(t, DmlString):
+        return t.length is not None
+    if isinstance(t, DmlDecimal):
+        return t.precision is not None and t.delimiter is None
+    if isinstance(t, DmlInteger):
+        return True
+    return False

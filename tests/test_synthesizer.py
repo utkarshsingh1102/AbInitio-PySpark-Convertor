@@ -13,11 +13,13 @@ from ibm_network.ir.models import Component, DMLRef, Edge, Graph, Port
 
 def _build_sample_graph() -> Graph:
     """source → reformat → filter → sort (sink). One DML attached to the source."""
+    # Delimited DML so the source routes through ReadStrategy.CSV_DELIMITED and
+    # emits a schema_var the assertions below check for.
     customer_dml = """
     record
-      decimal(10) id;
-      string(20) name;
-      integer(4) score;
+      decimal(",") id;
+      string(",") name;
+      decimal(",") score;
     end
     """
     src = Component(
