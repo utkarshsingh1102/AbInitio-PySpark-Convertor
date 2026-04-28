@@ -121,10 +121,24 @@ class _DMLTransformer(Transformer):
     def field(self, items: list[object]) -> DmlField:
         ty = items[0]
         name = str(items[1])
+        default = items[2] if len(items) > 2 else None
         assert isinstance(
             ty, DmlDecimal | DmlInteger | DmlReal | DmlString | DmlVoid | DmlDate | DmlDatetime
         )
-        return DmlField(name=name, type=ty)
+        return DmlField(name=name, type=ty, default=default)
+
+    def field_default(self, items: list[object]) -> str | int | float:
+        # The single child is the parsed default_literal (str | int | float).
+        return items[0]  # type: ignore[return-value]
+
+    def default_string(self, items: list[Token]) -> str:
+        return _unquote(str(items[0]))
+
+    def default_number(self, items: list[Token]) -> int | float:
+        text = str(items[0])
+        if "." in text or "e" in text.lower():
+            return float(text)
+        return int(text)
 
     def start(self, items: list[DmlField]) -> DmlRecord:
         return DmlRecord(fields=tuple(items))

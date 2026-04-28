@@ -1,6 +1,11 @@
 start: "record" field+ "end" ";"?
 
-field: dml_type CNAME ";"
+field: dml_type CNAME field_default? ";"
+
+field_default: "=" default_literal
+
+default_literal: ESCAPED_STRING -> default_string
+               | SIGNED_NUMBER  -> default_number
 
 dml_type: decimal_t
         | integer_t
@@ -36,6 +41,7 @@ COMMENT: /\/\*(.|\n)*?\*\//
 
 %import common.CNAME
 %import common.INT
+%import common.SIGNED_NUMBER
 %import common.ESCAPED_STRING
 %import common.WS
 %ignore WS

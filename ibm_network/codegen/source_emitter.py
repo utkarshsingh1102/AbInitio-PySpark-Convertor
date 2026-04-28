@@ -66,6 +66,7 @@ def render_source_read(
     if record is not None:
         base += _render_null_replacements(record)
         base += _render_temporal_conversions(record)
+        base += _render_defaults(record)
     return base
 
 
@@ -77,6 +78,28 @@ def _needs_inline_schema(record: DmlRecord) -> bool:
     is per-read, not per-column).
     """
     return any(isinstance(f.type, (DmlVoid, DmlDate, DmlDatetime)) for f in record.fields)
+
+
+def _render_defaults(record: DmlRecord) -> str:
+    """Append a single ``.fillna({col: default, ...})`` for fields that declare
+    a default value (``decimal(",") qty = 0;``). Spark's fillna ignores keys
+    whose column type doesn't match the default's type, so each column is
+    safe to include in one dict.
+    """
+    pairs: list[str] = []
+    for f in record.fields:
+        if isinstance(f.type, DmlVoid) or f.default is None:
+            continue
+        pairs.append(f'"{f.name}": {_default_literal(f.default)}')
+    if not pairs:
+        return ""
+    return ".fillna({" + ", ".join(pairs) + "})"
+
+
+def _default_literal(value: str | int | float) -> str:
+    if isinstance(value, str):
+        return f'"{value}"'
+    return str(value)
 
 
 def _render_temporal_conversions(record: DmlRecord) -> str:

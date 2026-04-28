@@ -60,6 +60,7 @@ DmlScalar = DmlDecimal | DmlInteger | DmlReal | DmlString | DmlVoid | DmlDate | 
 class DmlField:
     name: str
     type: DmlScalar
+    default: str | int | float | None = None
 
 
 @dataclass(frozen=True)
