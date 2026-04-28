@@ -17,6 +17,8 @@ from __future__ import annotations
 from enum import Enum
 
 from ibm_network.dml.ast import (
+    DmlDate,
+    DmlDatetime,
     DmlDecimal,
     DmlField,
     DmlInteger,
@@ -41,21 +43,37 @@ def choose(record: DmlRecord | None) -> ReadStrategy:
     """Pick a read strategy for the given parsed DML record.
 
     Decision tree:
-      - no record               → CSV_INFER (Spark guesses types)
-      - any field has delimiter → CSV_DELIMITED (TC-001 / TC-007 / etc.)
-      - all fields fixed-width  → TEXT_SUBSTRING (TC-002)
-      - otherwise               → CSV_DELIMITED (conservative default)
+      - no record                    → CSV_INFER (Spark guesses types)
+      - >1 distinct field delimiter  → CSV_MIXED_DELIM (TC-010)
+      - exactly 1 field delimiter    → CSV_DELIMITED (TC-001 / TC-007 / etc.)
+      - all fields fixed-width       → TEXT_SUBSTRING (TC-002)
+      - otherwise                    → CSV_DELIMITED (conservative default)
 
-    Mixed delimiters, variable vectors, EBCDIC, packed decimals will be
-    routed to their dedicated strategies in later TCs.
+    Variable vectors, EBCDIC, packed decimals are routed to their dedicated
+    strategies in later TCs.
     """
     if record is None:
         return ReadStrategy.CSV_INFER
-    if any(_has_delimiter(f) for f in record.fields):
+    delims = _collect_delimiters(record)
+    if len(delims) > 1:
+        return ReadStrategy.CSV_MIXED_DELIM
+    if len(delims) == 1:
         return ReadStrategy.CSV_DELIMITED
     if record.fields and all(_is_fixed_width(f) for f in record.fields):
         return ReadStrategy.TEXT_SUBSTRING
     return ReadStrategy.CSV_DELIMITED
+
+
+def _collect_delimiters(record: DmlRecord) -> set[str]:
+    """All distinct field-level delimiters used in `record`, excluding the row
+    terminator '\\n' (which is implicit in any text/CSV read).
+    """
+    out: set[str] = set()
+    for f in record.fields:
+        delim = getattr(f.type, "delimiter", None)
+        if delim and delim != "\\n":
+            out.add(delim)
+    return out
 
 
 def _has_delimiter(field: DmlField) -> bool:

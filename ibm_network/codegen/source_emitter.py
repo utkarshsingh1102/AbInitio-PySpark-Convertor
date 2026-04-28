@@ -60,6 +60,10 @@ def render_source_read(
         if record is None:
             raise ValueError("TEXT_SUBSTRING requires a parsed DmlRecord")
         base = _render_text_substring(record, input_path)
+    elif strategy is ReadStrategy.CSV_MIXED_DELIM:
+        if record is None:
+            raise ValueError("CSV_MIXED_DELIM requires a parsed DmlRecord")
+        base = _render_csv_mixed_delim(record, input_path)
     else:
         raise NotImplementedError(f"read strategy not implemented yet: {strategy.value}")
 
@@ -237,6 +241,71 @@ def _render_csv_with_inline_schema(
         ]
         base = f'{base}.select({", ".join(keep)})'
     return base
+
+
+def _render_csv_mixed_delim(record: DmlRecord, input_path: str) -> str:
+    """Read a record with mixed per-field delimiters (TC-010): read raw lines,
+    split by a regex character class containing all distinct delimiters, then
+    project each field by positional index.
+
+    Casts and date/timestamp parsing are applied inline so the standard
+    null/temporal/default chain remains a no-op for already-typed columns.
+    """
+    delims = sorted({
+        d for d in (getattr(f.type, "delimiter", None) for f in record.fields)
+        if d and d != "\\n"
+    })
+    regex_class = "[" + "".join(_regex_escape_class(d) for d in delims) + "]"
+
+    parts: list[str] = []
+    idx = 0
+    for f in record.fields:
+        if isinstance(f.type, DmlVoid):
+            idx += 1
+            continue
+        col = f'F.col("_p").getItem({idx})'
+        parts.append(_apply_inline_cast(col, f))
+        idx += 1
+    body = ",\n            ".join(parts)
+    # Outer parens turn the multi-line chain into a single expression so the
+    # post-read .withColumn(...) chain can be appended without breaking syntax.
+    return (
+        f'(spark.read.text("{input_path}")\n'
+        f'            .select(F.split(F.col("value"), r"{regex_class}").alias("_p"))\n'
+        f'            .select(\n'
+        f'                {body},\n'
+        f'            ))'
+    )
+
+
+def _apply_inline_cast(col_expr: str, field) -> str:  # type: ignore[no-untyped-def]
+    """Cast / parse `col_expr` (a string Column) according to `field.type` and
+    alias it to `field.name`. Used by CSV_MIXED_DELIM."""
+    t = field.type
+    if isinstance(t, DmlDate):
+        spark_fmt = to_spark_format(t.format)
+        return f'F.to_date({col_expr}, "{spark_fmt}").alias("{field.name}")'
+    if isinstance(t, DmlDatetime):
+        spark_fmt = to_spark_format(t.format)
+        return f'F.to_timestamp({col_expr}, "{spark_fmt}").alias("{field.name}")'
+    if isinstance(t, DmlString):
+        return f'{col_expr}.alias("{field.name}")'
+    cast = _sql_cast(t)
+    if cast is None:
+        return f'{col_expr}.alias("{field.name}")'
+    return f'{col_expr}.cast("{cast}").alias("{field.name}")'
+
+
+def _regex_escape_class(d: str) -> str:
+    """Escape `d` for safe use inside a regex character class.
+
+    Inside ``[...]`` the special characters are ``\\``, ``]``, ``^`` (only at
+    the start), and ``-`` (only between two chars). Escaping all of them is
+    always safe.
+    """
+    if d in ("\\", "]", "^", "-"):
+        return "\\" + d
+    return d
 
 
 def _render_text_substring(record: DmlRecord, input_path: str) -> str:
