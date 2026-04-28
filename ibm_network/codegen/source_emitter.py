@@ -9,9 +9,11 @@ from __future__ import annotations
 
 from ibm_network.codegen.read_strategy import ReadStrategy
 from ibm_network.dml.ast import (
+    DmlCondition,
     DmlDate,
     DmlDatetime,
     DmlDecimal,
+    DmlField,
     DmlInteger,
     DmlNested,
     DmlReal,
@@ -77,6 +79,7 @@ def render_source_read(
         base += _render_temporal_conversions(record)
         base += _render_vector_assemblies(record)
         base += _render_struct_assemblies(record)
+        base += _render_conditional_projections(record)
         base += _render_defaults(record)
     return base
 
@@ -84,8 +87,15 @@ def render_source_read(
 def _iter_leaves(fields):
     """Yield non-Nested DmlFields, descending through DmlNested containers so
     helpers (defaults, null replacement, temporal conversion) can apply by leaf
-    name regardless of how deep the field sits in a sub-record / union."""
+    name regardless of how deep the field sits in a sub-record / union.
+
+    Conditional branches (TC-017 / TC-018) are skipped — their leaves never
+    exist as flat columns at read time; the conditional projection casts them
+    inline.
+    """
     for f in fields:
+        if f.condition is not None or f.is_else:
+            continue
         if isinstance(f.type, DmlNested):
             yield from _iter_leaves(f.type.fields)
         else:
@@ -102,22 +112,28 @@ def _render_struct_assemblies(record: DmlRecord) -> str:
 
         .withColumn(name, F.struct(<inner cols>)).drop(<inner cols>)
 
-    after recursing into deeper nesting first. Finally appends a `.select(...)`
-    to enforce the top-level field order from the DML.
+    after recursing into deeper nesting first. Appends a `.select(...)` only
+    when no conditional fields are present; otherwise `_render_conditional_projections`
+    owns the final select.
     """
     if not _has_nested(record):
         return ""
     parts: list[str] = []
     _emit_assemblies(record.fields, parts)
-    final_cols = ", ".join(
-        f'"{f.name}"' for f in record.fields if not isinstance(f.type, DmlVoid)
-    )
-    parts.append(f".select({final_cols})")
+    has_conds = any(f.condition is not None or f.is_else for f in record.fields)
+    if not has_conds:
+        final_cols = ", ".join(
+            f'"{f.name}"' for f in record.fields if not isinstance(f.type, DmlVoid)
+        )
+        parts.append(f".select({final_cols})")
     return "".join(parts)
 
 
 def _emit_assemblies(fields, parts: list[str]) -> None:
     for f in fields:
+        if f.condition is not None or f.is_else:
+            # Conditional fields are assembled by _render_conditional_projections.
+            continue
         if isinstance(f.type, DmlNested):
             # Vector-of-records fields are assembled in-place by the
             # TEXT_SPLIT_REGEX path; their inner column names never exist as
@@ -139,6 +155,8 @@ def _needs_inline_schema(record: DmlRecord) -> bool:
       - fixed-length vector fields (read as N flat columns, then F.array assembled).
     """
     for f in record.fields:
+        if f.condition is not None or f.is_else:
+            return True
         if isinstance(f.type, (DmlVoid, DmlDate, DmlDatetime, DmlNested)):
             return True
         if f.vector_length is not None:
@@ -164,6 +182,89 @@ def _render_vector_assemblies(record: DmlRecord) -> str:
         parts.append(f'.withColumn("{f.name}", F.array({", ".join(cols)}))')
         parts.append(f'.drop({", ".join(cols)})')
     return "".join(parts)
+
+
+def _render_conditional_projections(record: DmlRecord) -> str:
+    """For each run of consecutive conditional fields (TC-017 / TC-018), emit:
+
+      - One `.withColumn(branch_name, F.when(activation, value_expr))` per branch.
+      - `.drop("_cN_0", "_cN_1", ...)` to remove the placeholder slots.
+
+    Ends with a `.select(...)` that enforces the final output column order.
+    """
+    has_conds = any(f.condition is not None or f.is_else for f in record.fields)
+    if not has_conds:
+        return ""
+
+    parts: list[str] = []
+    run_id = 0
+    i = 0
+    fields = record.fields
+
+    while i < len(fields):
+        f = fields[i]
+        if f.condition is None and not f.is_else:
+            i += 1
+            continue
+
+        j = i
+        run: list[DmlField] = []
+        while j < len(fields) and (fields[j].condition is not None or fields[j].is_else):
+            run.append(fields[j])
+            j += 1
+
+        width = max(_branch_slot_width(rf) for rf in run)
+        slot_cols = [f"_c{run_id}_{k}" for k in range(width)]
+
+        for branch in run:
+            act = _activation_expr(branch)
+            if isinstance(branch.type, DmlNested):
+                inner_parts: list[str] = []
+                for k, inner in enumerate(branch.type.fields):
+                    slot = f'F.col("_c{run_id}_{k}")'
+                    cast = _sql_cast(inner.type)
+                    if cast:
+                        slot = f'{slot}.cast("{cast}")'
+                    inner_parts.append(f'{slot}.alias("{inner.name}")')
+                struct_expr = f'F.struct({", ".join(inner_parts)})'
+                expr = f'F.when({act}, {struct_expr})'
+            else:
+                slot = f'F.col("_c{run_id}_0")'
+                cast = _sql_cast(branch.type)
+                if cast:
+                    slot = f'{slot}.cast("{cast}")'
+                expr = f'F.when({act}, {slot})'
+            parts.append(f'.withColumn("{branch.name}", {expr})')
+
+        drop_cols = ", ".join(f'"{c}"' for c in slot_cols)
+        parts.append(f'.drop({drop_cols})')
+
+        run_id += 1
+        i = j
+
+    all_output_cols = ", ".join(
+        f'"{f.name}"' for f in record.fields if not isinstance(f.type, DmlVoid)
+    )
+    parts.append(f".select({all_output_cols})")
+    return "".join(parts)
+
+
+def _activation_expr(field: DmlField) -> str:
+    if field.is_else:
+        neg_parts = [
+            f'(F.col("{c.column}") != F.lit({_cond_val_lit(c.value)}))'
+            for c in field.excludes
+        ]
+        return " & ".join(neg_parts) if neg_parts else "F.lit(True)"
+    c = field.condition
+    assert c is not None
+    return f'F.col("{c.column}") == F.lit({_cond_val_lit(c.value)})'
+
+
+def _cond_val_lit(value: str | int | float) -> str:
+    if isinstance(value, str):
+        return f'"{value}"'
+    return str(value)
 
 
 def _render_defaults(record: DmlRecord) -> str:
@@ -285,29 +386,60 @@ def _render_csv_with_inline_schema(
     return base
 
 
-def _emit_inline_schema(fields, inline: list[str], *, void_id: list[int]) -> None:
+def _emit_inline_schema(fields, inline: list[str], *, void_id: list[int],
+                        run_id: list[int] | None = None) -> None:
     """Walk fields (recursing into nested sub-records) and append flat
-    `StructField(...)` source strings to `inline`. `void_id` is a single-element
-    mutable counter used to generate unique placeholder names for voids.
+    `StructField(...)` source strings to `inline`. `void_id` and `run_id`
+    are single-element mutable counters used to generate unique placeholder
+    names for voids and conditional-region slots respectively.
     """
-    for f in fields:
+    if run_id is None:
+        run_id = [0]
+    i = 0
+    while i < len(fields):
+        f = fields[i]
+        if f.condition is not None or f.is_else:
+            j = i
+            run = []
+            while j < len(fields) and (
+                fields[j].condition is not None or fields[j].is_else
+            ):
+                run.append(fields[j])
+                j += 1
+            width = max(_branch_slot_width(rf) for rf in run)
+            for k in range(width):
+                inline.append(f'StructField("_c{run_id[0]}_{k}", StringType(), True)')
+            run_id[0] += 1
+            i = j
+            continue
         t = f.type
         if isinstance(t, DmlNested):
-            _emit_inline_schema(t.fields, inline, void_id=void_id)
+            _emit_inline_schema(t.fields, inline, void_id=void_id, run_id=run_id)
+            i += 1
             continue
         if isinstance(t, DmlVoid):
             inline.append(f'StructField("_void_{void_id[0]}", StringType(), True)')
             void_id[0] += 1
+            i += 1
             continue
         if isinstance(f.vector_length, int):
             elem_src = spark_type_source(t)
-            for j in range(f.vector_length):
-                inline.append(f'StructField("{f.name}_{j}", {elem_src}, True)')
+            for j2 in range(f.vector_length):
+                inline.append(f'StructField("{f.name}_{j2}", {elem_src}, True)')
+            i += 1
             continue
         if isinstance(t, (DmlDate, DmlDatetime)):
             inline.append(f'StructField("{f.name}", StringType(), True)')
         else:
             inline.append(f'StructField("{f.name}", {spark_type_source(t)}, True)')
+        i += 1
+
+
+def _branch_slot_width(field: DmlField) -> int:
+    """Number of positional slots a single conditional branch occupies."""
+    if isinstance(field.type, DmlNested):
+        return len(field.type.fields)
+    return 1
 
 
 def _render_csv_mixed_delim(record: DmlRecord, input_path: str) -> str:
