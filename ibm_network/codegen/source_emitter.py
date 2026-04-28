@@ -61,6 +61,10 @@ def render_source_read(
         if record is None:
             raise ValueError("TEXT_SUBSTRING requires a parsed DmlRecord")
         base = _render_text_substring(record, input_path)
+    elif strategy is ReadStrategy.TEXT_SPLIT_REGEX:
+        if record is None:
+            raise ValueError("TEXT_SPLIT_REGEX requires a parsed DmlRecord")
+        base = _render_text_split_regex(record, input_path)
     elif strategy is ReadStrategy.CSV_MIXED_DELIM:
         if record is None:
             raise ValueError("CSV_MIXED_DELIM requires a parsed DmlRecord")
@@ -202,7 +206,7 @@ def _render_null_replacements(record: DmlRecord) -> str:
     parts: list[str] = []
     for f in record.fields:
         sentinel = getattr(f.type, "null_value", None)
-        if sentinel is None or isinstance(f.type, DmlVoid):
+        if sentinel is None or isinstance(f.type, (DmlVoid, DmlNested)):
             continue
         lit = _format_null_lit(sentinel, f.type)
         if lit is None:
@@ -343,6 +347,69 @@ def _apply_inline_cast(col_expr: str, field) -> str:  # type: ignore[no-untyped-
     return f'{col_expr}.cast("{cast}").alias("{field.name}")'
 
 
+def _render_text_split_regex(record: DmlRecord, input_path: str) -> str:
+    """Read a record with one or more variable-length vectors (TC-015): read raw
+    lines, split into a string array `_p`, then project each scalar via
+    `element_at` and each vector via `slice` (with `transform(...)` casts when
+    the element type isn't a string). Offsets accumulate symbolically because
+    they depend on runtime discriminator columns.
+    """
+    delim = None
+    for f in record.fields:
+        d = getattr(f.type, "delimiter", None)
+        if d and d != "\\n":
+            delim = d
+            break
+    delim = delim or ","
+
+    parts: list[str] = []
+    constant = 1  # 1-based SQL slice/element_at offset
+    sym_terms: list[str] = []
+
+    for f in record.fields:
+        t = f.type
+        if isinstance(f.vector_length, str):
+            disc = f.vector_length
+            cur = _format_offset_expr(constant, sym_terms)
+            assert not isinstance(t, DmlNested)
+            cast = _sql_cast(t) if not isinstance(t, DmlString) else None
+            slice_e = f"slice(_p, {cur}, {disc})"
+            sql = (
+                f"transform({slice_e}, x -> cast(x as {cast}))" if cast else slice_e
+            )
+            parts.append(f'.withColumn("{f.name}", F.expr("{sql}"))')
+            sym_terms.append(disc)
+            continue
+        # scalar at offset — element_at requires INT, force the cast since
+        # offsets that mix in BIGINT discriminator columns otherwise fail.
+        assert not isinstance(t, DmlNested)
+        cur = _format_offset_expr(constant, sym_terms)
+        idx = cur if not sym_terms else f"int({cur})"
+        cast = _sql_cast(t)
+        e = f"element_at(_p, {idx})"
+        sql = f"cast({e} as {cast})" if cast else e
+        parts.append(f'.withColumn("{f.name}", F.expr("{sql}"))')
+        constant += 1
+
+    parts.append('.drop("_p")')
+    body = "".join(parts)
+    return (
+        f'(spark.read.text("{input_path}")\n'
+        f'            .select(F.split(F.col("value"), r"{_regex_escape_class(delim)}").alias("_p"))'
+        f"{body})"
+    )
+
+
+def _format_offset_expr(constant: int, sym_terms: list[str]) -> str:
+    counts: dict[str, int] = {}
+    for s in sym_terms:
+        counts[s] = counts.get(s, 0) + 1
+    parts = [str(constant)]
+    for name, n in counts.items():
+        parts.append(name if n == 1 else f"{n}*{name}")
+    return " + ".join(parts) if len(parts) > 1 else parts[0]
+
+
 def _regex_escape_class(d: str) -> str:
     """Escape `d` for safe use inside a regex character class.
 
@@ -365,6 +432,7 @@ def _render_text_substring(record: DmlRecord, input_path: str) -> str:
     parts: list[str] = []
     offset = 1
     for f in record.fields:
+        assert not isinstance(f.type, DmlNested)
         width = _fixed_width(f.type)
         if not isinstance(f.type, DmlVoid):
             cast_to = _sql_cast(f.type)

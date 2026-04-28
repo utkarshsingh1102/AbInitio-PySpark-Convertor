@@ -163,6 +163,9 @@ class _DMLTransformer(Transformer):
     def vector_fixed(self, items: list[Token]) -> _VectorMark:
         return _VectorMark(length=int(items[0]))
 
+    def vector_var(self, items: list[Token]) -> _VectorMark:
+        return _VectorMark(length=str(items[0]))
+
     def field_default(self, items: list[object]) -> str | int | float:
         # The single child is the parsed default_literal (str | int | float).
         return items[0]  # type: ignore[return-value]

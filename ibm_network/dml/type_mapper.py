@@ -85,8 +85,8 @@ def to_struct_field(field: DmlField) -> StructField:
         dtype = ArrayType(inner) if field.vector_length is not None else inner
         return StructField(field.name, dtype, True)
     elem = to_dtype(field.type)
-    dtype = ArrayType(elem) if field.vector_length is not None else elem
-    return StructField(field.name, dtype, True)
+    leaf_dtype = ArrayType(elem) if field.vector_length is not None else elem
+    return StructField(field.name, leaf_dtype, True)
 
 
 def to_struct(record: DmlRecord) -> StructType:

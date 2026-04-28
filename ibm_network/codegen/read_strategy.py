@@ -53,6 +53,8 @@ def choose(record: DmlRecord | None) -> ReadStrategy:
     """
     if record is None:
         return ReadStrategy.CSV_INFER
+    if any(isinstance(f.vector_length, str) for f in record.fields):
+        return ReadStrategy.TEXT_SPLIT_REGEX
     delims = _collect_delimiters(record)
     if len(delims) > 1:
         return ReadStrategy.CSV_MIXED_DELIM
