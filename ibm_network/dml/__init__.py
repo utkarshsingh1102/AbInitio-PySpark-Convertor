@@ -1,4 +1,4 @@
-from ibm_network.dml.codegen import schema_to_struct_source
+from ibm_network.dml.emitter import render_schema, render_schema_from_text
 from ibm_network.dml.parser import parse_dml
 
-__all__ = ["parse_dml", "schema_to_struct_source"]
+__all__ = ["parse_dml", "render_schema", "render_schema_from_text"]

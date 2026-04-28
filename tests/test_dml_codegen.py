@@ -1,7 +1,8 @@
 import ast
 from pathlib import Path
 
-from ibm_network.dml.codegen import dml_text_to_struct_source, schema_to_struct_source
+from ibm_network.dml.emitter import render_schema as schema_to_struct_source
+from ibm_network.dml.emitter import render_schema_from_text as dml_text_to_struct_source
 from ibm_network.dml.parser import parse_dml_file
 
 FIX = Path(__file__).parent / "fixtures" / "dml"

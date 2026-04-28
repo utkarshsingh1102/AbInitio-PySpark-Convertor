@@ -1,8 +1,8 @@
 """DML type-AST → `pyspark.sql.types.DataType` (pure functions).
 
 This module is the canonical, typed counterpart to the source-string emitter in
-`ibm_network.dml.codegen`. Code generation does **not** need PySpark installed,
-so the codegen path stays string-based; this module exists for tests, schema
+`ibm_network.dml.emitter`. Code generation does **not** need PySpark installed,
+so the emitter path stays string-based; this module exists for tests, schema
 validation, and any caller that wants a real Spark `DataType` for runtime use.
 
 PySpark is imported lazily inside each public function so that importing this

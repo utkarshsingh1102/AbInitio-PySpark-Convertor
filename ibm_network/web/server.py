@@ -16,7 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from ibm_network.codegen import synthesize
-from ibm_network.dml.codegen import dml_text_to_struct_source
+from ibm_network.dml.emitter import render_schema_from_text
 from ibm_network.ir.models import Graph
 from ibm_network.mapping.transform_expr import expr_to_pyspark, transform_block_to_select_args
 
@@ -38,7 +38,7 @@ def index() -> FileResponse:
 @app.post("/api/dml")
 def api_dml(req: TextRequest) -> dict:
     try:
-        struct_src = dml_text_to_struct_source(req.text)
+        struct_src = render_schema_from_text(req.text)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"DML parse error: {e}") from e
     py_file = (

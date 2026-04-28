@@ -16,7 +16,7 @@ from jinja2 import Environment
 
 from ibm_network.codegen.llm_client import LLMClient, LLMUnavailableError
 from ibm_network.codegen.prompt import POLISH_SYSTEM, build_polish_prompt
-from ibm_network.dml.codegen import dml_text_to_struct_source
+from ibm_network.dml.emitter import render_schema_from_text
 from ibm_network.ir.models import Component, Graph, Port
 from ibm_network.mapping import map_component
 from ibm_network.mapping.base import MappingError, Op, df_var
@@ -121,7 +121,7 @@ def _emit_source(comp: Component) -> tuple[tuple[str, str] | None, str, list[str
     if out_dml is not None:
         schema_var = f"schema_{_safe_id(comp.id)}"
         try:
-            schema_src = dml_text_to_struct_source(out_dml)
+            schema_src = render_schema_from_text(out_dml)
         except Exception as e:  # pragma: no cover - parser errors surface to caller
             notes.append(f"source {comp.id}: DML parse failed ({e}); using inferSchema=True")
             schema_clause = ', header=True, inferSchema=True'
