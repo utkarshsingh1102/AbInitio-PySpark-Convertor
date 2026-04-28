@@ -48,17 +48,69 @@ def render_source_read(
         if schema_var is None:
             raise ValueError("CSV_DELIMITED requires a schema_var")
         if record is not None and any(isinstance(f.type, DmlVoid) for f in record.fields):
-            return _render_csv_with_voids(record, input_path, delimiter)
+            base = _render_csv_with_voids(record, input_path, delimiter)
+        else:
+            opts = _csv_options(delimiter)
+            base = f'spark.read{opts}.csv("{input_path}", schema={schema_var})'
+    elif strategy is ReadStrategy.CSV_INFER:
         opts = _csv_options(delimiter)
-        return f'spark.read{opts}.csv("{input_path}", schema={schema_var})'
-    if strategy is ReadStrategy.CSV_INFER:
-        opts = _csv_options(delimiter)
-        return f'spark.read{opts}.csv("{input_path}", inferSchema=True)'
-    if strategy is ReadStrategy.TEXT_SUBSTRING:
+        base = f'spark.read{opts}.csv("{input_path}", inferSchema=True)'
+    elif strategy is ReadStrategy.TEXT_SUBSTRING:
         if record is None:
             raise ValueError("TEXT_SUBSTRING requires a parsed DmlRecord")
-        return _render_text_substring(record, input_path)
-    raise NotImplementedError(f"read strategy not implemented yet: {strategy.value}")
+        base = _render_text_substring(record, input_path)
+    else:
+        raise NotImplementedError(f"read strategy not implemented yet: {strategy.value}")
+
+    if record is not None:
+        base += _render_null_replacements(record)
+    return base
+
+
+def _render_null_replacements(record: DmlRecord) -> str:
+    """For every field whose DML carries a `null("...")` indicator, append a
+    ``.withColumn(name, F.when(col == lit(sentinel), None).otherwise(col))`` step.
+
+    Spark's CSV reader's global ``nullValue`` option only handles one sentinel;
+    real Ab Initio records have *per-field* sentinels (TC-006).
+    """
+    parts: list[str] = []
+    for f in record.fields:
+        sentinel = getattr(f.type, "null_value", None)
+        if sentinel is None or isinstance(f.type, DmlVoid):
+            continue
+        lit = _format_null_lit(sentinel, f.type)
+        if lit is None:
+            # Sentinel can't be compared cleanly (e.g., empty-string sentinel on a
+            # numeric column). Spark's CSV reader already maps empty cells to null
+            # on typed schemas, so no extra step is needed here.
+            continue
+        parts.append(
+            f'.withColumn("{f.name}", '
+            f'F.when(F.col("{f.name}") == {lit}, None)'
+            f'.otherwise(F.col("{f.name}")))'
+        )
+    return "".join(parts)
+
+
+def _format_null_lit(sentinel: str, scalar: DmlScalar) -> str | None:
+    """Render a null sentinel as a PySpark `F.lit(...)` expression.
+
+    Returns ``None`` when the sentinel cannot be safely compared against the
+    field's type — e.g., an empty-string sentinel on a numeric column would
+    force Spark to cast ``""`` to BIGINT and crash. The caller skips that
+    step entirely.
+    """
+    is_numeric = isinstance(scalar, (DmlInteger, DmlReal, DmlDecimal))
+    if is_numeric:
+        if not sentinel:
+            return None
+        try:
+            float(sentinel)
+        except ValueError:
+            return None
+        return f"F.lit({sentinel})"
+    return f'F.lit("{sentinel}")'
 
 
 def _render_csv_with_voids(

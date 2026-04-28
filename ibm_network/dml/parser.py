@@ -3,7 +3,7 @@ from __future__ import annotations
 from importlib.resources import files
 from pathlib import Path
 
-from lark import Lark, Token, Transformer
+from lark import Lark, Token, Transformer, Tree
 
 from ibm_network.dml.ast import (
     DmlDate,
@@ -30,26 +30,50 @@ def _unquote(s: str) -> str:
     return s
 
 
+def _partition_args(items: list[object]) -> tuple[list[str], str | None]:
+    """Split a transformer's items list into positional ESCAPED_STRINGs (unquoted)
+    and an optional ``null_indicator`` value. Tokens are unquoted; null_indicator
+    Trees contribute their first child's unquoted string.
+    """
+    strings: list[str] = []
+    null_value: str | None = None
+    for it in items:
+        if isinstance(it, Tree) and it.data == "null_indicator":
+            null_value = _unquote(str(it.children[0]))
+        else:
+            strings.append(_unquote(str(it)))
+    return strings, null_value
+
+
 class _DMLTransformer(Transformer):
     def decimal_fixed(self, items: list[Token]) -> DmlDecimal:
         precision = int(items[0])
         scale = int(items[1]) if len(items) > 1 else 0
         return DmlDecimal(precision=precision, scale=scale)
 
-    def decimal_str_form(self, items: list[Token]) -> DmlDecimal:
-        """Handle both `decimal(delim)` and `decimal("P.S", delim)` forms.
+    def decimal_str_form(self, items: list[object]) -> DmlDecimal:
+        """Handle every string-form variant of decimal:
 
-        The single-string form is delimited integer (LongType downstream).
-        The two-string form encodes precision and scale in the first string.
+            decimal(delim)
+            decimal(delim, null("..."))
+            decimal("P.S", delim)
+            decimal("P.S", delim, null("..."))
+            decimal("P", delim)
         """
-        if len(items) == 1:
-            return DmlDecimal(delimiter=_unquote(str(items[0])))
-        precision_str = _unquote(str(items[0]))
-        delim = _unquote(str(items[1]))
+        strings, null_value = _partition_args(items)
+        if len(strings) == 1:
+            return DmlDecimal(delimiter=strings[0], null_value=null_value)
+        precision_str = strings[0]
+        delim = strings[1]
         if "." in precision_str:
             p_part, s_part = precision_str.split(".", 1)
-            return DmlDecimal(precision=int(p_part), scale=int(s_part), delimiter=delim)
-        return DmlDecimal(precision=int(precision_str), delimiter=delim)
+            return DmlDecimal(
+                precision=int(p_part),
+                scale=int(s_part),
+                delimiter=delim,
+                null_value=null_value,
+            )
+        return DmlDecimal(precision=int(precision_str), delimiter=delim, null_value=null_value)
 
     def decimal_t(self, items: list[DmlDecimal]) -> DmlDecimal:
         return items[0]
@@ -65,8 +89,9 @@ class _DMLTransformer(Transformer):
     def string_fixed(self, items: list[Token]) -> DmlString:
         return DmlString(length=int(items[0]))
 
-    def string_delim(self, items: list[Token]) -> DmlString:
-        return DmlString(delimiter=_unquote(str(items[0])))
+    def string_delim(self, items: list[object]) -> DmlString:
+        strings, null_value = _partition_args(items)
+        return DmlString(delimiter=strings[0], null_value=null_value)
 
     def string_t(self, items: list[DmlString]) -> DmlString:
         return items[0]

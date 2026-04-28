@@ -8,6 +8,7 @@ class DmlDecimal:
     precision: int | None = None
     scale: int = 0
     delimiter: str | None = None
+    null_value: str | None = None
 
 
 @dataclass(frozen=True)
@@ -27,6 +28,7 @@ class DmlReal:
 class DmlString:
     length: int | None = None
     delimiter: str | None = None
+    null_value: str | None = None
 
 
 @dataclass(frozen=True)
