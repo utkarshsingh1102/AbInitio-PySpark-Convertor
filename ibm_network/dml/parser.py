@@ -17,7 +17,9 @@ from ibm_network.dml.ast import (
 )
 
 _GRAMMAR_TEXT = (files("ibm_network.dml") / "grammar.lark").read_text()
-_PARSER = Lark(_GRAMMAR_TEXT, start="start", parser="earley")
+# LALR is faster than Earley and the v1 grammar is unambiguous; switching here so
+# that the fixture suite (re-parses 25 inputs per run) doesn't pay Earley overhead.
+_PARSER = Lark(_GRAMMAR_TEXT, start="start", parser="lalr")
 
 
 def _unquote(s: str) -> str:
