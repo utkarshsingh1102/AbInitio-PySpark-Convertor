@@ -17,6 +17,13 @@ from jinja2 import Environment
 from ibm_network.codegen.llm_client import LLMClient, LLMUnavailableError
 from ibm_network.codegen.prompt import POLISH_SYSTEM, build_polish_prompt
 from ibm_network.dml.emitter import render_schema_from_text
+from ibm_network.dml.warnings import (
+    dml_parse_fallback,
+    llm_fallback_failed,
+    llm_polish_skipped,
+    no_dml_available,
+    unmappable_component,
+)
 from ibm_network.ir.models import Component, Graph, Port
 from ibm_network.mapping import map_component
 from ibm_network.mapping.base import MappingError, Op, df_var
@@ -123,13 +130,13 @@ def _emit_source(comp: Component) -> tuple[tuple[str, str] | None, str, list[str
         try:
             schema_src = render_schema_from_text(out_dml)
         except Exception as e:  # pragma: no cover - parser errors surface to caller
-            notes.append(f"source {comp.id}: DML parse failed ({e}); using inferSchema=True")
+            notes.append(dml_parse_fallback(comp.id, str(e)).format())
             schema_clause = ', header=True, inferSchema=True'
         else:
             schema_entry = (schema_var, schema_src)
             schema_clause = f", header=True, schema={schema_var}"
     else:
-        notes.append(f"source {comp.id}: no DML available; using inferSchema=True")
+        notes.append(no_dml_available(comp.id).format())
         schema_clause = ", header=True, inferSchema=True"
 
     read_line = f'{var} = spark.read.csv("{input_path}"{schema_clause})'
@@ -149,7 +156,7 @@ def _emit_component(
     except MappingError as rule_err:
         if not enable_llm_fallback:
             raise
-        notes.append(f"{comp.id}: rule miss → LLM fallback ({rule_err})")
+        notes.append(unmappable_component(comp.id, comp.ab_initio_type, str(rule_err)).format())
         try:
             return llm_map_component(comp, inputs, client=llm_client), notes
         except (MappingError, LLMUnavailableError) as e:
@@ -159,7 +166,7 @@ def _emit_component(
                 code=f"{inputs[0] if inputs else 'spark.emptyDataFrame'}  # TODO: unmappable {comp.ab_initio_type}",
                 notes=[f"unmappable: {rule_err}; fallback failed: {e}"],
             )
-            notes.append(f"{comp.id}: fallback unavailable ({e}); placeholder emitted")
+            notes.append(llm_fallback_failed(comp.id, str(e)).format())
             return placeholder, notes
 
 
@@ -170,7 +177,7 @@ def _maybe_polish(
     try:
         polished = client.generate(build_polish_prompt(graph, code), system=POLISH_SYSTEM)
     except LLMUnavailableError as e:
-        notes.append(f"polish skipped: {e}")
+        notes.append(llm_polish_skipped(str(e)).format())
         return code
     polished = polished.strip()
     # If the model wrapped output in a markdown fence, strip it.
@@ -179,7 +186,7 @@ def _maybe_polish(
             line for line in polished.splitlines() if not line.strip().startswith("```")
         ).strip()
     if not polished or "build_pipeline" not in polished:
-        notes.append("polish skipped: model output did not preserve entry points")
+        notes.append(llm_polish_skipped("model output did not preserve entry points").format())
         return code
     return _ensure_trailing_newline(polished)
 
