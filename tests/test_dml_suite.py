@@ -24,7 +24,8 @@ from typing import Any
 import pytest
 
 from ibm_network.codegen import synthesize
-from ibm_network.dml.codegen import dml_text_to_struct_source
+from ibm_network.dml.parser import parse_dml
+from ibm_network.dml.type_mapper import to_struct
 from ibm_network.ir.models import Component, DMLRef, Edge, Graph, Port
 
 FIX = Path(__file__).parent / "fixtures" / "dml_suite"
@@ -52,13 +53,6 @@ def _sample_data_path(tc_id: str) -> Path | None:
         if p.exists():
             return p
     return None
-
-
-def _eval_struct(src: str):
-    """Evaluate a `StructType([...])` source string against pyspark.sql.types."""
-    from pyspark.sql import types as T
-    namespace = {n: getattr(T, n) for n in dir(T) if not n.startswith("_")}
-    return eval(src, {"__builtins__": {}}, namespace)
 
 
 def _normalize(value: Any) -> Any:
@@ -116,8 +110,8 @@ def spark():
 
 @pytest.mark.parametrize("tc_id", TC_IDS)
 def test_schema(tc_id: str) -> None:
-    src = dml_text_to_struct_source(_read_dml(tc_id))
-    schema = _eval_struct(src)
+    record = parse_dml(_read_dml(tc_id))
+    schema = to_struct(record)
     assert schema.jsonValue() == _expected_schema(tc_id)
 
 
