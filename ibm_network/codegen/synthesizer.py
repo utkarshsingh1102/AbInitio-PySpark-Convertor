@@ -16,7 +16,10 @@ from jinja2 import Environment
 
 from ibm_network.codegen.llm_client import LLMClient, LLMUnavailableError
 from ibm_network.codegen.prompt import POLISH_SYSTEM, build_polish_prompt
-from ibm_network.dml.emitter import render_schema_from_text
+from ibm_network.codegen.read_strategy import ReadStrategy, choose as choose_read_strategy
+from ibm_network.codegen.source_emitter import render_source_read
+from ibm_network.dml.emitter import render_schema
+from ibm_network.dml.parser import parse_dml
 from ibm_network.dml.warnings import (
     dml_parse_fallback,
     llm_fallback_failed,
@@ -113,34 +116,36 @@ def synthesize(
 
 
 def _emit_source(comp: Component) -> tuple[tuple[str, str] | None, str, list[str]]:
-    """Build a `spark.read.csv(...)` line for a source component.
+    """Build the read line for a source component.
 
-    If the component has an output DML, we generate a `StructType` and pass it as schema.
-    Otherwise we let Spark infer the schema and add a note.
+    Parses the component's output DML (if any), asks `read_strategy.choose` for
+    a strategy, and routes through `source_emitter.render_source_read` for the
+    actual code text. Schema generation and the read line are decoupled so
+    Phase 3 can route fixed-width / binary records to non-CSV strategies.
     """
     var = df_var(comp.id)
     input_path = comp.params.get("url") or comp.params.get("input_path") or f"<TODO:{comp.id}>"
-    schema_entry: tuple[str, str] | None = None
-    schema_clause = ""
     notes: list[str] = []
 
     out_dml = _first_dml(comp.dml_refs, comp.out_ports) or _first_dml(comp.dml_refs, comp.in_ports)
+    record = None
     if out_dml is not None:
-        schema_var = f"schema_{_safe_id(comp.id)}"
         try:
-            schema_src = render_schema_from_text(out_dml)
+            record = parse_dml(out_dml)
         except Exception as e:  # pragma: no cover - parser errors surface to caller
             notes.append(dml_parse_fallback(comp.id, str(e)).format())
-            schema_clause = ', header=True, inferSchema=True'
-        else:
-            schema_entry = (schema_var, schema_src)
-            schema_clause = f", header=True, schema={schema_var}"
     else:
         notes.append(no_dml_available(comp.id).format())
-        schema_clause = ", header=True, inferSchema=True"
 
-    read_line = f'{var} = spark.read.csv("{input_path}"{schema_clause})'
-    return schema_entry, read_line, notes
+    strategy = choose_read_strategy(record)
+    schema_entry: tuple[str, str] | None = None
+    schema_var: str | None = None
+    if record is not None and strategy is ReadStrategy.CSV_DELIMITED:
+        schema_var = f"schema_{_safe_id(comp.id)}"
+        schema_entry = (schema_var, render_schema(record))
+
+    read_body = render_source_read(strategy, schema_var=schema_var, input_path=input_path)
+    return schema_entry, f"{var} = {read_body}", notes
 
 
 def _emit_component(
