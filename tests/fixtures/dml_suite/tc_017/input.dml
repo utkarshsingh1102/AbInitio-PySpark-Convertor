@@ -1,0 +1,14 @@
+record
+  decimal(",") record_type;
+  if (record_type == 1)
+    record
+      string(",") customer_name;
+      decimal(",") customer_age;
+    end customer_info;
+  if (record_type == 2)
+    record
+      decimal(",") order_id;
+      decimal("10.2", ",") order_amount;
+    end order_info;
+  string("\n") timestamp;
+end;

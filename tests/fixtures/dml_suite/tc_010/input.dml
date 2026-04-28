@@ -1,0 +1,7 @@
+record
+  decimal("|") account_id;
+  string("|") account_holder;
+  decimal("8.2", "|") balance;
+  date("YYYY-MM-DD")(";") opened_date;
+  string("\n") branch;
+end;

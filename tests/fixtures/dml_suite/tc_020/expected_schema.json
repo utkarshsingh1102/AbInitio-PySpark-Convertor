@@ -1,0 +1,29 @@
+{
+  "type": "struct",
+  "fields": [
+    {
+      "name": "account_num",
+      "type": "long",
+      "nullable": true,
+      "metadata": {}
+    },
+    {
+      "name": "balance",
+      "type": "decimal(7,2)",
+      "nullable": true,
+      "metadata": {}
+    },
+    {
+      "name": "status_code",
+      "type": "long",
+      "nullable": true,
+      "metadata": {}
+    },
+    {
+      "name": "account_name",
+      "type": "string",
+      "nullable": true,
+      "metadata": {}
+    }
+  ]
+}

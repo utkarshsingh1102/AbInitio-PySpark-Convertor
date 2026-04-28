@@ -1,0 +1,10 @@
+/* Customer master record
+   Last updated: 2024-Q3 */
+record
+    decimal(",") customer_id;     // primary key
+
+    string(",")  name;            /* full name */
+    // skip middle name for now
+    decimal("10.2", ",") balance;
+    string("\n") status;
+end;

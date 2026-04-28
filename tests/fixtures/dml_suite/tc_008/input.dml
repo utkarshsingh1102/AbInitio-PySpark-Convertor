@@ -1,0 +1,6 @@
+record
+  decimal(",") id;
+  string(",") name = "UNKNOWN";
+  decimal(",") qty = 0;
+  string("\n") region = "GLOBAL";
+end;

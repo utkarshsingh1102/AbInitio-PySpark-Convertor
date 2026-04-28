@@ -1,0 +1,20 @@
+[
+  {
+    "customer_id": 1,
+    "middle_name": "A",
+    "discount": "5.00",
+    "status": "active"
+  },
+  {
+    "customer_id": null,
+    "middle_name": null,
+    "discount": null,
+    "status": "inactive"
+  },
+  {
+    "customer_id": 3,
+    "middle_name": "B",
+    "discount": "2.50",
+    "status": "active"
+  }
+]

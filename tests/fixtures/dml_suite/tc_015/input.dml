@@ -1,0 +1,7 @@
+record
+  decimal(",") order_id;
+  decimal(",") item_count;
+  string(",")[item_count] item_names;
+  decimal(",")[item_count] item_quantities;
+  string("\n") order_status;
+end;

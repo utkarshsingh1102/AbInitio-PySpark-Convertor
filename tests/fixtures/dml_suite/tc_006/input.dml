@@ -1,0 +1,6 @@
+record
+  decimal(",", null("")) customer_id;
+  string(",", null("NULL")) middle_name;
+  decimal("10.2", ",", null("-1")) discount;
+  string("\n") status;
+end;

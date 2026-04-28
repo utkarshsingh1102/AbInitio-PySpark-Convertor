@@ -1,0 +1,6 @@
+record
+  decimal(",") txn_id;
+  decimal("10.2", ",") signed_amount;
+  decimal("8", ",", null("0")) qty;
+  string("\n") currency;
+end;

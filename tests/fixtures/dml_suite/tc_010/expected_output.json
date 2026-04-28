@@ -1,0 +1,16 @@
+[
+  {
+    "account_id": 100,
+    "account_holder": "Alice",
+    "balance": "1500.50",
+    "opened_date": "2020-01-15",
+    "branch": "NYC"
+  },
+  {
+    "account_id": 101,
+    "account_holder": "Bob",
+    "balance": "750.25",
+    "opened_date": "2021-06-30",
+    "branch": "SFO"
+  }
+]

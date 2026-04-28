@@ -1,0 +1,7 @@
+record
+  decimal(",") id;
+  void(",") padding1;
+  string(",") name;
+  void(",") padding2;
+  string("\n") status;
+end;

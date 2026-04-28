@@ -1,0 +1,10 @@
+type money_t = decimal("12.2", ",");
+type ts_t = datetime("YYYY-MM-DD HH24:MI:SS")(",");
+
+record
+  decimal(",") txn_id;
+  money_t amount;
+  money_t fee;
+  ts_t created_at;
+  string("\n") status;
+end;

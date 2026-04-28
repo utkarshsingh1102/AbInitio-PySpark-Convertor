@@ -1,0 +1,20 @@
+[
+  {
+    "id": 1,
+    "name": "Alice",
+    "qty": 5,
+    "region": "US"
+  },
+  {
+    "id": 2,
+    "name": "UNKNOWN",
+    "qty": 0,
+    "region": "EU"
+  },
+  {
+    "id": 3,
+    "name": "UNKNOWN",
+    "qty": 0,
+    "region": "GLOBAL"
+  }
+]

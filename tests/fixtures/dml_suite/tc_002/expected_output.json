@@ -1,0 +1,20 @@
+[
+  {
+    "emp_id": "EMP0000001",
+    "emp_name": "Alice                         ",
+    "age": 35,
+    "country_code": "US"
+  },
+  {
+    "emp_id": "EMP0000002",
+    "emp_name": "Bob                           ",
+    "age": 42,
+    "country_code": "CA"
+  },
+  {
+    "emp_id": "EMP0000003",
+    "emp_name": "Carol Smith                   ",
+    "age": 29,
+    "country_code": "GB"
+  }
+]

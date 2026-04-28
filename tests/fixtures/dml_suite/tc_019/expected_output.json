@@ -1,0 +1,32 @@
+[
+  {
+    "entity_id": 1,
+    "entity_type": 1,
+    "value": {
+      "numeric_value": 42,
+      "string_value": null,
+      "date_value": null
+    },
+    "source_system": "SYS_A"
+  },
+  {
+    "entity_id": 2,
+    "entity_type": 2,
+    "value": {
+      "numeric_value": null,
+      "string_value": "hello",
+      "date_value": null
+    },
+    "source_system": "SYS_B"
+  },
+  {
+    "entity_id": 3,
+    "entity_type": 3,
+    "value": {
+      "numeric_value": null,
+      "string_value": null,
+      "date_value": "2024-06-01"
+    },
+    "source_system": "SYS_C"
+  }
+]

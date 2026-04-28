@@ -1,0 +1,6 @@
+record
+  packed_decimal(5) account_num;
+  packed_decimal("7.2") balance;
+  zoned_decimal(4) status_code;
+  string(20) account_name;
+end;

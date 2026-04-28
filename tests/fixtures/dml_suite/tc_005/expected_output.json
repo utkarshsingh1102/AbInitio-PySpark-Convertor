@@ -1,0 +1,17 @@
+[
+  {
+    "id": 1,
+    "name": "Alice",
+    "status": "active"
+  },
+  {
+    "id": 2,
+    "name": "Bob",
+    "status": "inactive"
+  },
+  {
+    "id": 3,
+    "name": "Carol",
+    "status": "active"
+  }
+]

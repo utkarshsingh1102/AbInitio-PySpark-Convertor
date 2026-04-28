@@ -1,0 +1,11 @@
+record
+  decimal(",") customer_id;
+  string(",") name;
+  record
+    string(",") street;
+    string(",") city;
+    string(",") state;
+    string(",") zip;
+  end address;
+  string("\n") phone;
+end;

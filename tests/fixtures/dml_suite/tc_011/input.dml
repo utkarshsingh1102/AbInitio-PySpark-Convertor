@@ -1,0 +1,5 @@
+record
+  string(5, ",") product_code;
+  string(50, ",") product_name;
+  decimal("10.2", "\n") price;
+end;

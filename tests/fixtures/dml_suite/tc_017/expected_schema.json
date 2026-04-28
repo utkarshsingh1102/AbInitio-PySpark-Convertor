@@ -1,0 +1,61 @@
+{
+  "type": "struct",
+  "fields": [
+    {
+      "name": "record_type",
+      "type": "long",
+      "nullable": true,
+      "metadata": {}
+    },
+    {
+      "name": "customer_info",
+      "type": {
+        "type": "struct",
+        "fields": [
+          {
+            "name": "customer_name",
+            "type": "string",
+            "nullable": true,
+            "metadata": {}
+          },
+          {
+            "name": "customer_age",
+            "type": "long",
+            "nullable": true,
+            "metadata": {}
+          }
+        ]
+      },
+      "nullable": true,
+      "metadata": {}
+    },
+    {
+      "name": "order_info",
+      "type": {
+        "type": "struct",
+        "fields": [
+          {
+            "name": "order_id",
+            "type": "long",
+            "nullable": true,
+            "metadata": {}
+          },
+          {
+            "name": "order_amount",
+            "type": "decimal(10,2)",
+            "nullable": true,
+            "metadata": {}
+          }
+        ]
+      },
+      "nullable": true,
+      "metadata": {}
+    },
+    {
+      "name": "timestamp",
+      "type": "string",
+      "nullable": true,
+      "metadata": {}
+    }
+  ]
+}

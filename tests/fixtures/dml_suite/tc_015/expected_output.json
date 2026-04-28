@@ -1,0 +1,30 @@
+[
+  {
+    "order_id": 100,
+    "item_count": 3,
+    "item_names": [
+      "apple",
+      "banana",
+      "cherry"
+    ],
+    "item_quantities": [
+      5,
+      2,
+      3
+    ],
+    "order_status": "shipped"
+  },
+  {
+    "order_id": 101,
+    "item_count": 2,
+    "item_names": [
+      "milk",
+      "bread"
+    ],
+    "item_quantities": [
+      1,
+      2
+    ],
+    "order_status": "pending"
+  }
+]

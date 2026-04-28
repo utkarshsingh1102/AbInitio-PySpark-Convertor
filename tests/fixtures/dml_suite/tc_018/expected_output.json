@@ -1,0 +1,23 @@
+[
+  {
+    "status_code": "A",
+    "active_reason": "onboarded",
+    "inactive_reason": null,
+    "generic_reason": null,
+    "updated_by": "admin"
+  },
+  {
+    "status_code": "I",
+    "active_reason": null,
+    "inactive_reason": "closed",
+    "generic_reason": null,
+    "updated_by": "system"
+  },
+  {
+    "status_code": "P",
+    "active_reason": null,
+    "inactive_reason": null,
+    "generic_reason": "pending",
+    "updated_by": "system"
+  }
+]

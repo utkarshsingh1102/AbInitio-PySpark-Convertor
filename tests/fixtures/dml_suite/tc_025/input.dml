@@ -1,0 +1,27 @@
+record
+  decimal(",") txn_id;
+  datetime("YYYY-MM-DD HH24:MI:SS")(",") txn_timestamp;
+  decimal(",") customer_id;
+  decimal(",") txn_type;
+
+  record
+    string(",", null("")) merchant_name;
+    string(",") merchant_category;
+    decimal("10.2", ",") amount;
+  end merchant_info;
+
+  decimal(",") item_count;
+  record[item_count]
+    string(",") sku;
+    decimal(",") quantity;
+    decimal("8.2", ",") line_total;
+  end line_items;
+
+  if (txn_type == 2)
+    record
+      decimal(",") original_txn_id;
+      string(",") refund_reason;
+    end refund_details;
+
+  string("\n", null("UNKNOWN")) channel;
+end;

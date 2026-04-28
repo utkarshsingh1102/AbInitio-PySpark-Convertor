@@ -1,0 +1,29 @@
+{
+  "type": "struct",
+  "fields": [
+    {
+      "name": "txn_id",
+      "type": "long",
+      "nullable": true,
+      "metadata": {}
+    },
+    {
+      "name": "signed_amount",
+      "type": "decimal(10,2)",
+      "nullable": true,
+      "metadata": {}
+    },
+    {
+      "name": "qty",
+      "type": "long",
+      "nullable": true,
+      "metadata": {}
+    },
+    {
+      "name": "currency",
+      "type": "string",
+      "nullable": true,
+      "metadata": {}
+    }
+  ]
+}

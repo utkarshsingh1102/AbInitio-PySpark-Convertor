@@ -1,0 +1,6 @@
+record
+  string(10) emp_id;
+  string(30) emp_name;
+  decimal(5) age;
+  string(2) country_code;
+end;

@@ -1,0 +1,28 @@
+[
+  {
+    "txn_id": 1,
+    "txn_timestamp": "2024-01-15 10:00:00",
+    "customer_id": 42,
+    "txn_type": 1,
+    "merchant_info": {
+      "merchant_name": "Acme",
+      "merchant_category": "GROCERY",
+      "amount": "99.99"
+    },
+    "item_count": 2,
+    "line_items": [
+      {
+        "sku": "A",
+        "quantity": 3,
+        "line_total": "9.99"
+      },
+      {
+        "sku": "B",
+        "quantity": 1,
+        "line_total": "4.50"
+      }
+    ],
+    "refund_details": null,
+    "channel": "WEB"
+  }
+]

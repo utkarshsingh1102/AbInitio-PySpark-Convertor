@@ -1,0 +1,51 @@
+{
+  "type": "struct",
+  "fields": [
+    {
+      "name": "entity_id",
+      "type": "long",
+      "nullable": true,
+      "metadata": {}
+    },
+    {
+      "name": "entity_type",
+      "type": "long",
+      "nullable": true,
+      "metadata": {}
+    },
+    {
+      "name": "value",
+      "type": {
+        "type": "struct",
+        "fields": [
+          {
+            "name": "numeric_value",
+            "type": "long",
+            "nullable": true,
+            "metadata": {}
+          },
+          {
+            "name": "string_value",
+            "type": "string",
+            "nullable": true,
+            "metadata": {}
+          },
+          {
+            "name": "date_value",
+            "type": "date",
+            "nullable": true,
+            "metadata": {}
+          }
+        ]
+      },
+      "nullable": true,
+      "metadata": {}
+    },
+    {
+      "name": "source_system",
+      "type": "string",
+      "nullable": true,
+      "metadata": {}
+    }
+  ]
+}

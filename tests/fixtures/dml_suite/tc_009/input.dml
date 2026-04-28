@@ -1,0 +1,6 @@
+record
+  decimal(",") student_id;
+  decimal(",")[5] subject_scores;
+  string(",")[3] favorite_subjects;
+  string("\n") name;
+end;

@@ -1,0 +1,5 @@
+record
+  string(10, charset="EBCDIC") emp_id;
+  string(30, charset="EBCDIC") emp_name;
+  packed_decimal(5) age;
+end;

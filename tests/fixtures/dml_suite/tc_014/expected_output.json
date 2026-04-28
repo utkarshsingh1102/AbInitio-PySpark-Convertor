@@ -1,0 +1,30 @@
+[
+  {
+    "id": 1,
+    "customer": {
+      "name": "Alice",
+      "address": {
+        "street": "123 Main",
+        "location": {
+          "city": "Springfield",
+          "country": "US"
+        }
+      }
+    },
+    "status": "active"
+  },
+  {
+    "id": 2,
+    "customer": {
+      "name": "Bob",
+      "address": {
+        "street": "456 Oak",
+        "location": {
+          "city": "Berlin",
+          "country": "DE"
+        }
+      }
+    },
+    "status": "inactive"
+  }
+]

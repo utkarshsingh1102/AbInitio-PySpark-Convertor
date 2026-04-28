@@ -1,0 +1,24 @@
+[
+  {
+    "customer_id": 1,
+    "name": "Alice",
+    "address": {
+      "street": "123 Main",
+      "city": "Springfield",
+      "state": "IL",
+      "zip": "62704"
+    },
+    "phone": "555-0101"
+  },
+  {
+    "customer_id": 2,
+    "name": "Bob",
+    "address": {
+      "street": "456 Oak",
+      "city": "Madison",
+      "state": "WI",
+      "zip": "53703"
+    },
+    "phone": "555-0202"
+  }
+]

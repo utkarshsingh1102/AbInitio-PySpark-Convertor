@@ -1,0 +1,20 @@
+[
+  {
+    "record_type": 1,
+    "customer_info": {
+      "customer_name": "Alice",
+      "customer_age": 30
+    },
+    "order_info": null,
+    "timestamp": "2024-01-01"
+  },
+  {
+    "record_type": 2,
+    "customer_info": null,
+    "order_info": {
+      "order_id": 500,
+      "order_amount": "99.99"
+    },
+    "timestamp": "2024-01-02"
+  }
+]

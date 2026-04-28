@@ -1,0 +1,10 @@
+record
+  decimal(",") order_id;
+  decimal(",") line_count;
+  record[line_count]
+    string(",") sku;
+    decimal(",") qty;
+    decimal("8.2", ",") price;
+  end line_items;
+  string("\n") status;
+end;

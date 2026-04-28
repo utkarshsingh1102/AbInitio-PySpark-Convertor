@@ -1,0 +1,5 @@
+record
+  decimal(",") order_id;
+  decimal("8.2", ",") unit_price;
+  decimal("12.4", ",") total_amount;
+end;

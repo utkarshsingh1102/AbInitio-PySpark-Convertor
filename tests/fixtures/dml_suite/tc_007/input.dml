@@ -1,0 +1,6 @@
+record
+  decimal(",") txn_id;
+  date("YYYY-MM-DD")(",") txn_date;
+  datetime("YYYYMMDDHH24MISS")(",") created_ts;
+  datetime("YYYY-MM-DD HH24:MI:SS")("\n") updated_ts;
+end;

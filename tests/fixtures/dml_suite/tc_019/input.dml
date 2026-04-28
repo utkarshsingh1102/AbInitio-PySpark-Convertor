@@ -1,0 +1,10 @@
+record
+  decimal(",") entity_id;
+  decimal(",") entity_type;
+  union
+    decimal(",") numeric_value;
+    string(",") string_value;
+    date("YYYY-MM-DD")(",") date_value;
+  end value;
+  string("\n") source_system;
+end;

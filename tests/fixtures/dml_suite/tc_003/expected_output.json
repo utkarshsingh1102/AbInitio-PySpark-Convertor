@@ -1,0 +1,17 @@
+[
+  {
+    "order_id": 100,
+    "unit_price": "9.99",
+    "total_amount": "99.9000"
+  },
+  {
+    "order_id": 101,
+    "unit_price": "12.50",
+    "total_amount": "250.0000"
+  },
+  {
+    "order_id": 102,
+    "unit_price": "1.05",
+    "total_amount": "2.1000"
+  }
+]

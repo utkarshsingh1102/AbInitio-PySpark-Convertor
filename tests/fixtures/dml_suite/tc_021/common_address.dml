@@ -1,0 +1,6 @@
+type address_t = record
+  string(",") street;
+  string(",") city;
+  string(",") state;
+  string(",") zip;
+end;

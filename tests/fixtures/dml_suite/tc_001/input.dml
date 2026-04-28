@@ -1,0 +1,6 @@
+record
+  decimal(",") customer_id;
+  string(",") first_name;
+  string(",") last_name;
+  string("\n") email;
+end;

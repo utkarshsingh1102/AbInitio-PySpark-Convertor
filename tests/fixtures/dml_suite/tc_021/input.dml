@@ -1,0 +1,8 @@
+include "common_address.dml";
+
+record
+  decimal(",") customer_id;
+  string(",") name;
+  address_t address;
+  string("\n") phone;
+end;

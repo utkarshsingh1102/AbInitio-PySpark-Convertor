@@ -1,0 +1,14 @@
+record
+  decimal(",") id;
+  record
+    string(",") name;
+    record
+      string(",") street;
+      record
+        string(",") city;
+        string(",") country;
+      end location;
+    end address;
+  end customer;
+  string("\n") status;
+end;

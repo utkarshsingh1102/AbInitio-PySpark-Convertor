@@ -1,0 +1,35 @@
+{
+  "type": "struct",
+  "fields": [
+    {
+      "name": "account_id",
+      "type": "long",
+      "nullable": true,
+      "metadata": {}
+    },
+    {
+      "name": "account_holder",
+      "type": "string",
+      "nullable": true,
+      "metadata": {}
+    },
+    {
+      "name": "balance",
+      "type": "decimal(8,2)",
+      "nullable": true,
+      "metadata": {}
+    },
+    {
+      "name": "opened_date",
+      "type": "date",
+      "nullable": true,
+      "metadata": {}
+    },
+    {
+      "name": "branch",
+      "type": "string",
+      "nullable": true,
+      "metadata": {}
+    }
+  ]
+}

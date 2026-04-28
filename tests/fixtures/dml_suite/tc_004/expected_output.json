@@ -1,0 +1,20 @@
+[
+  {
+    "sensor_id": 1,
+    "temperature": 98.6,
+    "pressure": 1013.25,
+    "unit": "F"
+  },
+  {
+    "sensor_id": 2,
+    "temperature": 21.4,
+    "pressure": 1013.25,
+    "unit": "C"
+  },
+  {
+    "sensor_id": 3,
+    "temperature": 5.0,
+    "pressure": 995.0,
+    "unit": "C"
+  }
+]

@@ -1,0 +1,19 @@
+[
+  {
+    "order_id": 100,
+    "line_count": 2,
+    "line_items": [
+      {
+        "sku": "A",
+        "qty": 3,
+        "price": "9.99"
+      },
+      {
+        "sku": "B",
+        "qty": 1,
+        "price": "4.50"
+      }
+    ],
+    "status": "paid"
+  }
+]

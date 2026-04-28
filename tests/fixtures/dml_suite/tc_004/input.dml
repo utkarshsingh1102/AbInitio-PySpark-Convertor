@@ -1,0 +1,6 @@
+record
+  decimal(",") sensor_id;
+  real("4", ",") temperature;
+  real("8", ",") pressure;
+  string("\n") unit;
+end;

@@ -1,0 +1,17 @@
+[
+  {
+    "product_code": "ABC01",
+    "product_name": "Widget",
+    "price": "9.99"
+  },
+  {
+    "product_code": "ABC02",
+    "product_name": "Gizmo",
+    "price": "19.95"
+  },
+  {
+    "product_code": "XYZ99",
+    "product_name": "Sprocket",
+    "price": "3.50"
+  }
+]

@@ -1,0 +1,23 @@
+{
+  "type": "struct",
+  "fields": [
+    {
+      "name": "order_id",
+      "type": "long",
+      "nullable": true,
+      "metadata": {}
+    },
+    {
+      "name": "unit_price",
+      "type": "decimal(8,2)",
+      "nullable": true,
+      "metadata": {}
+    },
+    {
+      "name": "total_amount",
+      "type": "decimal(12,4)",
+      "nullable": true,
+      "metadata": {}
+    }
+  ]
+}

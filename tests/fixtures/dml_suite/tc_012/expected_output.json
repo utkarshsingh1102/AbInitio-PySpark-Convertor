@@ -1,0 +1,20 @@
+[
+  {
+    "txn_id": 1,
+    "signed_amount": "100.50",
+    "qty": 5,
+    "currency": "USD"
+  },
+  {
+    "txn_id": 2,
+    "signed_amount": "-25.00",
+    "qty": null,
+    "currency": "EUR"
+  },
+  {
+    "txn_id": 3,
+    "signed_amount": "-1000.00",
+    "qty": 3,
+    "currency": "GBP"
+  }
+]

@@ -1,0 +1,10 @@
+record
+  string(",") status_code;
+  if (status_code == "A")
+    string(",") active_reason;
+  else if (status_code == "I")
+    string(",") inactive_reason;
+  else
+    string(",") generic_reason;
+  string("\n") updated_by;
+end;
