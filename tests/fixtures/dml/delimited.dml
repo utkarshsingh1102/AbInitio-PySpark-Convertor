@@ -1,0 +1,6 @@
+record
+  decimal(",") order_id;
+  string("|") product_name;
+  integer(8) quantity;
+  decimal(",") price;
+end;

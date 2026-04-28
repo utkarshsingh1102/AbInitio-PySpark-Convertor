@@ -1,0 +1,52 @@
+// DML transform sublanguage — covers the subset we encounter in REFORMAT/FILTER/ROLLUP.
+
+start_block: assignment+
+start_expr: expr
+
+assignment: "out" "." CNAME ASSIGN expr ";"
+ASSIGN: "::" | "="
+
+?expr: or_expr
+
+?or_expr: and_expr
+        | or_expr "or" and_expr   -> or_op
+
+?and_expr: not_expr
+         | and_expr "and" not_expr -> and_op
+
+?not_expr: "not" not_expr          -> not_op
+         | cmp_expr
+
+?cmp_expr: add_expr
+         | add_expr CMP add_expr   -> cmp
+
+CMP: "==" | "!=" | "<>" | "<=" | ">=" | "<" | ">" | "="
+
+?add_expr: mul_expr
+         | add_expr ADD mul_expr   -> binop
+
+ADD: "+" | "-" | "||"
+
+?mul_expr: unary
+         | mul_expr MUL unary      -> binop
+
+MUL: "*" | "/" | "%"
+
+?unary: "-" unary                  -> neg
+      | atom
+
+?atom: SIGNED_NUMBER               -> number
+     | ESCAPED_STRING              -> string_lit
+     | "if" "(" expr ")" expr "else" expr -> if_then_else
+     | CNAME "(" args? ")"         -> call
+     | CNAME "." CNAME             -> field_ref
+     | CNAME                       -> ident
+     | "(" expr ")"
+
+args: expr ("," expr)*
+
+%import common.CNAME
+%import common.SIGNED_NUMBER
+%import common.ESCAPED_STRING
+%import common.WS
+%ignore WS

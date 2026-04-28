@@ -1,0 +1,60 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ibm_network"
+version = "0.1.0"
+description = "IBM Network: convert Ab Initio graphs into PySpark code (Mapping + DML convertor + Code generator)."
+requires-python = ">=3.10"
+readme = "README.md"
+authors = [{ name = "IBM Network team" }]
+dependencies = [
+    "neo4j>=5.20",
+    "pydantic>=2.6",
+    "pydantic-settings>=2.2",
+    "lark>=1.1",
+    "jinja2>=3.1",
+    "httpx>=0.27",
+    "pyyaml>=6.0",
+    "click>=8.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.4",
+    "mypy>=1.10",
+]
+spark = [
+    "pyspark>=3.5",
+]
+
+[project.scripts]
+ibm-net = "ibm_network.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["ibm_network*"]
+
+[tool.setuptools.package-data]
+"ibm_network.dml" = ["*.lark"]
+"ibm_network.mapping.transform_expr" = ["*.lark"]
+"ibm_network.codegen.templates" = ["*.j2"]
+"ibm_network.config" = ["*.yaml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = ["-ra", "-m", "not integration"]
+markers = [
+    "integration: requires live Neo4j / Ollama / Spark — skipped by default; opt-in with `pytest -m integration`",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["E501"]

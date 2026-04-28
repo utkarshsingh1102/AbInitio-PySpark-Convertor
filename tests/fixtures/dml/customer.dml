@@ -1,0 +1,8 @@
+record
+  decimal(10) customer_id;
+  string(20) name;
+  date("YYYY-MM-DD") signup_date;
+  datetime("YYYYMMDDHHMMSS") last_login;
+  integer(4) age;
+  decimal(12,2) balance;
+end

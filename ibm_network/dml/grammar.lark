@@ -1,0 +1,32 @@
+start: "record" field+ "end" ";"?
+
+field: dml_type CNAME ";"
+
+dml_type: decimal_t
+        | integer_t
+        | string_t
+        | date_t
+        | datetime_t
+
+decimal_t: "decimal" "(" decimal_args ")"
+decimal_args: INT ("," INT)?     -> decimal_fixed
+            | ESCAPED_STRING     -> decimal_delim
+
+integer_t: "integer" "(" INT ")"
+
+string_t: "string" "(" string_args ")"
+string_args: INT                 -> string_fixed
+           | ESCAPED_STRING      -> string_delim
+
+date_t: "date" "(" ESCAPED_STRING ")"
+datetime_t: "datetime" "(" ESCAPED_STRING ")"
+
+COMMENT: /\/\*(.|\n)*?\*\//
+       | /\/\/[^\n]*/
+
+%import common.CNAME
+%import common.INT
+%import common.ESCAPED_STRING
+%import common.WS
+%ignore WS
+%ignore COMMENT
