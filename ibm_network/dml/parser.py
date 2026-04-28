@@ -12,6 +12,7 @@ from ibm_network.dml.ast import (
     DmlDecimal,
     DmlField,
     DmlInteger,
+    DmlNested,
     DmlReal,
     DmlRecord,
     DmlScalar,
@@ -133,7 +134,13 @@ class _DMLTransformer(Transformer):
     def dml_type(self, items: list[DmlScalar]) -> DmlScalar:
         return items[0]
 
-    def field(self, items: list[object]) -> DmlField:
+    def nested_field(self, items: list[object]) -> DmlField:
+        # children are DmlField...; final item is the CNAME naming the sub-record.
+        *children, name_tok = items
+        nested = DmlNested(fields=tuple(c for c in children if isinstance(c, DmlField)))
+        return DmlField(name=str(name_tok), type=nested)
+
+    def scalar_field(self, items: list[object]) -> DmlField:
         # field rule: dml_type vector_suffix? CNAME field_default?
         # Order is fixed but optional pieces drop out, so identify each item by type.
         ty = items[0]

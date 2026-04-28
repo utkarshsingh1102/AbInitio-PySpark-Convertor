@@ -19,6 +19,7 @@ from ibm_network.dml.ast import (
     DmlDecimal,
     DmlField,
     DmlInteger,
+    DmlNested,
     DmlReal,
     DmlRecord,
     DmlScalar,
@@ -74,10 +75,15 @@ def to_dtype(scalar: DmlScalar) -> DataType:
 
 def to_struct_field(field: DmlField) -> StructField:
     """Convert a `DmlField` to a `StructField` (nullable=True, no metadata).
-    Vector fields wrap the element type in `ArrayType`.
+    Vector fields wrap the element type in `ArrayType`. Nested-record fields
+    recurse into a child `StructType`.
     """
-    from pyspark.sql.types import ArrayType, StructField
+    from pyspark.sql.types import ArrayType, StructField, StructType
 
+    if isinstance(field.type, DmlNested):
+        inner = StructType([to_struct_field(c) for c in field.type.fields])
+        dtype = ArrayType(inner) if field.vector_length is not None else inner
+        return StructField(field.name, dtype, True)
     elem = to_dtype(field.type)
     dtype = ArrayType(elem) if field.vector_length is not None else elem
     return StructField(field.name, dtype, True)

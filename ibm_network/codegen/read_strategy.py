@@ -20,6 +20,7 @@ from ibm_network.dml.ast import (
     DmlDecimal,
     DmlField,
     DmlInteger,
+    DmlNested,
     DmlReal,
     DmlRecord,
     DmlString,
@@ -64,14 +65,23 @@ def choose(record: DmlRecord | None) -> ReadStrategy:
 
 def _collect_delimiters(record: DmlRecord) -> set[str]:
     """All distinct field-level delimiters used in `record`, excluding the row
-    terminator '\\n' (which is implicit in any text/CSV read).
+    terminator '\\n' (which is implicit in any text/CSV read). Recurses into
+    nested sub-records so TC-013/TC-014 see the inner delimiters too.
     """
     out: set[str] = set()
-    for f in record.fields:
+    for f in _walk_leaves(record.fields):
         delim = getattr(f.type, "delimiter", None)
         if delim and delim != "\\n":
             out.add(delim)
     return out
+
+
+def _walk_leaves(fields):
+    for f in fields:
+        if isinstance(f.type, DmlNested):
+            yield from _walk_leaves(f.type.fields)
+        else:
+            yield f
 
 
 def _has_delimiter(field: DmlField) -> bool:

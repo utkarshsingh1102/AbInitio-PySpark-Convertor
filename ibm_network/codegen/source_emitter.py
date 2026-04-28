@@ -13,6 +13,7 @@ from ibm_network.dml.ast import (
     DmlDatetime,
     DmlDecimal,
     DmlInteger,
+    DmlNested,
     DmlReal,
     DmlRecord,
     DmlScalar,
@@ -71,8 +72,42 @@ def render_source_read(
         base += _render_null_replacements(record)
         base += _render_temporal_conversions(record)
         base += _render_vector_assemblies(record)
+        base += _render_struct_assemblies(record)
         base += _render_defaults(record)
     return base
+
+
+def _has_nested(record: DmlRecord) -> bool:
+    return any(isinstance(f.type, DmlNested) for f in record.fields)
+
+
+def _render_struct_assemblies(record: DmlRecord) -> str:
+    """Bottom-up roll up flat read columns into nested struct columns (TC-013 /
+    TC-014). For each nested field, emits
+
+        .withColumn(name, F.struct(<inner cols>)).drop(<inner cols>)
+
+    after recursing into deeper nesting first. Finally appends a `.select(...)`
+    to enforce the top-level field order from the DML.
+    """
+    if not _has_nested(record):
+        return ""
+    parts: list[str] = []
+    _emit_assemblies(record.fields, parts)
+    final_cols = ", ".join(
+        f'"{f.name}"' for f in record.fields if not isinstance(f.type, DmlVoid)
+    )
+    parts.append(f".select({final_cols})")
+    return "".join(parts)
+
+
+def _emit_assemblies(fields, parts: list[str]) -> None:
+    for f in fields:
+        if isinstance(f.type, DmlNested):
+            _emit_assemblies(f.type.fields, parts)
+            inner = ", ".join(f'"{c.name}"' for c in f.type.fields)
+            parts.append(f'.withColumn("{f.name}", F.struct({inner}))')
+            parts.append(f".drop({inner})")
 
 
 def _needs_inline_schema(record: DmlRecord) -> bool:
@@ -84,7 +119,7 @@ def _needs_inline_schema(record: DmlRecord) -> bool:
       - fixed-length vector fields (read as N flat columns, then F.array assembled).
     """
     for f in record.fields:
-        if isinstance(f.type, (DmlVoid, DmlDate, DmlDatetime)):
+        if isinstance(f.type, (DmlVoid, DmlDate, DmlDatetime, DmlNested)):
             return True
         if f.vector_length is not None:
             return True
@@ -216,20 +251,7 @@ def _render_csv_with_inline_schema(
     """
     opts = _csv_options(delimiter)
     inline: list[str] = []
-    for i, f in enumerate(record.fields):
-        t = f.type
-        if isinstance(t, DmlVoid):
-            inline.append(f'StructField("_void_{i}", StringType(), True)')
-            continue
-        if isinstance(f.vector_length, int):
-            elem_src = spark_type_source(t)
-            for j in range(f.vector_length):
-                inline.append(f'StructField("{f.name}_{j}", {elem_src}, True)')
-            continue
-        if isinstance(t, (DmlDate, DmlDatetime)):
-            inline.append(f'StructField("{f.name}", StringType(), True)')
-        else:
-            inline.append(f'StructField("{f.name}", {spark_type_source(t)}, True)')
+    _emit_inline_schema(record.fields, inline, void_id=[0])
     schema_inline = "StructType([" + ", ".join(inline) + "])"
     has_voids = any(isinstance(f.type, DmlVoid) for f in record.fields)
     base = f'spark.read{opts}.csv("{input_path}", schema={schema_inline})'
@@ -241,6 +263,31 @@ def _render_csv_with_inline_schema(
         ]
         base = f'{base}.select({", ".join(keep)})'
     return base
+
+
+def _emit_inline_schema(fields, inline: list[str], *, void_id: list[int]) -> None:
+    """Walk fields (recursing into nested sub-records) and append flat
+    `StructField(...)` source strings to `inline`. `void_id` is a single-element
+    mutable counter used to generate unique placeholder names for voids.
+    """
+    for f in fields:
+        t = f.type
+        if isinstance(t, DmlNested):
+            _emit_inline_schema(t.fields, inline, void_id=void_id)
+            continue
+        if isinstance(t, DmlVoid):
+            inline.append(f'StructField("_void_{void_id[0]}", StringType(), True)')
+            void_id[0] += 1
+            continue
+        if isinstance(f.vector_length, int):
+            elem_src = spark_type_source(t)
+            for j in range(f.vector_length):
+                inline.append(f'StructField("{f.name}_{j}", {elem_src}, True)')
+            continue
+        if isinstance(t, (DmlDate, DmlDatetime)):
+            inline.append(f'StructField("{f.name}", StringType(), True)')
+        else:
+            inline.append(f'StructField("{f.name}", {spark_type_source(t)}, True)')
 
 
 def _render_csv_mixed_delim(record: DmlRecord, input_path: str) -> str:

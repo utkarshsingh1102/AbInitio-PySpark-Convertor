@@ -11,7 +11,7 @@ must agree byte-for-byte on what types they produce; tests pin both.
 
 from __future__ import annotations
 
-from ibm_network.dml.ast import DmlField, DmlRecord, DmlVoid
+from ibm_network.dml.ast import DmlField, DmlNested, DmlRecord, DmlVoid
 from ibm_network.dml.parser import parse_dml
 from ibm_network.dml.type_map import spark_type_source
 
@@ -38,7 +38,11 @@ def render_schema_from_text(text: str, *, indent: int = 4) -> str:
 
 
 def _render_struct_field(field: DmlField) -> str:
-    type_src = spark_type_source(field.type)
+    if isinstance(field.type, DmlNested):
+        inner_fields = ", ".join(_render_struct_field(c) for c in field.type.fields)
+        type_src = f"StructType([{inner_fields}])"
+    else:
+        type_src = spark_type_source(field.type)
     if field.vector_length is not None:
         type_src = f"ArrayType({type_src})"
     return f'StructField("{field.name}", {type_src}, True)'

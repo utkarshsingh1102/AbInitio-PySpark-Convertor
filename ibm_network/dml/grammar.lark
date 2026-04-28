@@ -1,6 +1,7 @@
 start: "record" field+ "end" ";"?
 
-field: dml_type vector_suffix? CNAME field_default? ";"
+field: dml_type vector_suffix? CNAME field_default? ";"     -> scalar_field
+     | "record" field+ "end" CNAME ";"                       -> nested_field
 
 vector_suffix: "[" INT "]"     -> vector_fixed
 

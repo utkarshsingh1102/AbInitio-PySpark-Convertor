@@ -57,9 +57,19 @@ DmlScalar = DmlDecimal | DmlInteger | DmlReal | DmlString | DmlVoid | DmlDate | 
 
 
 @dataclass(frozen=True)
+class DmlNested:
+    """Inline sub-record (TC-013 / TC-014). Stored as a tuple of fields so the
+    type continues to behave like the other immutable type nodes; recursion is
+    expressed by a DmlField whose `type` is another DmlNested.
+    """
+
+    fields: tuple = ()  # tuple[DmlField, ...]  — recursive forward ref
+
+
+@dataclass(frozen=True)
 class DmlField:
     name: str
-    type: DmlScalar
+    type: "DmlScalar | DmlNested"
     default: str | int | float | None = None
     # Non-None when the field is a vector. Today only fixed-length (int) is
     # supported; TC-015's runtime length-prefixed form will plug an `str` here
