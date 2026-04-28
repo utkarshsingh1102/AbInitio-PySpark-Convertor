@@ -102,6 +102,12 @@ class _DMLTransformer(Transformer):
         strings, null_value = _partition_args(items)
         return DmlString(delimiter=strings[0], null_value=null_value)
 
+    def string_hybrid(self, items: list[object]) -> DmlString:
+        # string(N, "delim") — declared max length plus a terminator.
+        length = int(str(items[0]))
+        strings, null_value = _partition_args(items[1:])
+        return DmlString(length=length, delimiter=strings[0], null_value=null_value)
+
     def string_t(self, items: list[DmlString]) -> DmlString:
         return items[0]
 

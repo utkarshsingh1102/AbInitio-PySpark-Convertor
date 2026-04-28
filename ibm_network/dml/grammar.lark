@@ -26,8 +26,9 @@ integer_t: "integer" "(" INT ")"
 real_t: "real" "(" ESCAPED_STRING ("," ESCAPED_STRING)? ")"
 
 string_t: "string" "(" string_args ")"
-string_args: INT                                       -> string_fixed
-           | ESCAPED_STRING ("," null_indicator)?      -> string_delim
+string_args: INT                                                  -> string_fixed
+           | INT "," ESCAPED_STRING ("," null_indicator)?         -> string_hybrid
+           | ESCAPED_STRING ("," null_indicator)?                 -> string_delim
 
 null_indicator: "null" "(" ESCAPED_STRING ")"
 
