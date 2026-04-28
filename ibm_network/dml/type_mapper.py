@@ -73,10 +73,14 @@ def to_dtype(scalar: DmlScalar) -> DataType:
 
 
 def to_struct_field(field: DmlField) -> StructField:
-    """Convert a `DmlField` to a `StructField` (nullable=True, no metadata)."""
-    from pyspark.sql.types import StructField
+    """Convert a `DmlField` to a `StructField` (nullable=True, no metadata).
+    Vector fields wrap the element type in `ArrayType`.
+    """
+    from pyspark.sql.types import ArrayType, StructField
 
-    return StructField(field.name, to_dtype(field.type), True)
+    elem = to_dtype(field.type)
+    dtype = ArrayType(elem) if field.vector_length is not None else elem
+    return StructField(field.name, dtype, True)
 
 
 def to_struct(record: DmlRecord) -> StructType:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from importlib.resources import files
 from pathlib import Path
 
@@ -22,6 +23,14 @@ _GRAMMAR_TEXT = (files("ibm_network.dml") / "grammar.lark").read_text()
 # LALR is faster than Earley and the v1 grammar is unambiguous; switching here so
 # that the fixture suite (re-parses 25 inputs per run) doesn't pay Earley overhead.
 _PARSER = Lark(_GRAMMAR_TEXT, start="start", parser="lalr")
+
+
+@dataclass(frozen=True)
+class _VectorMark:
+    """Internal marker the field transformer uses to distinguish a parsed
+    vector_suffix from a default literal (both can be ints)."""
+
+    length: int | str
 
 
 def _unquote(s: str) -> str:
@@ -119,13 +128,27 @@ class _DMLTransformer(Transformer):
         return items[0]
 
     def field(self, items: list[object]) -> DmlField:
+        # field rule: dml_type vector_suffix? CNAME field_default?
+        # Order is fixed but optional pieces drop out, so identify each item by type.
         ty = items[0]
-        name = str(items[1])
-        default = items[2] if len(items) > 2 else None
+        vector_length: int | str | None = None
+        default: str | int | float | None = None
+        name: str | None = None
+        for it in items[1:]:
+            if isinstance(it, _VectorMark):
+                vector_length = it.length
+            elif isinstance(it, Token):
+                name = str(it)
+            else:
+                default = it  # type: ignore[assignment]
+        assert name is not None, "field rule produced no CNAME"
         assert isinstance(
             ty, DmlDecimal | DmlInteger | DmlReal | DmlString | DmlVoid | DmlDate | DmlDatetime
         )
-        return DmlField(name=name, type=ty, default=default)
+        return DmlField(name=name, type=ty, default=default, vector_length=vector_length)
+
+    def vector_fixed(self, items: list[Token]) -> "_VectorMark":
+        return _VectorMark(length=int(items[0]))
 
     def field_default(self, items: list[object]) -> str | int | float:
         # The single child is the parsed default_literal (str | int | float).

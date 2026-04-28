@@ -61,6 +61,10 @@ class DmlField:
     name: str
     type: DmlScalar
     default: str | int | float | None = None
+    # Non-None when the field is a vector. Today only fixed-length (int) is
+    # supported; TC-015's runtime length-prefixed form will plug an `str` here
+    # naming the discriminator field.
+    vector_length: int | str | None = None
 
 
 @dataclass(frozen=True)

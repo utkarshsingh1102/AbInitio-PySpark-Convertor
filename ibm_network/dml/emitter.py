@@ -38,4 +38,7 @@ def render_schema_from_text(text: str, *, indent: int = 4) -> str:
 
 
 def _render_struct_field(field: DmlField) -> str:
-    return f'StructField("{field.name}", {spark_type_source(field.type)}, True)'
+    type_src = spark_type_source(field.type)
+    if field.vector_length is not None:
+        type_src = f"ArrayType({type_src})"
+    return f'StructField("{field.name}", {type_src}, True)'

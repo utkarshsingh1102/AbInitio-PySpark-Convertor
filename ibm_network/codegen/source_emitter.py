@@ -66,18 +66,45 @@ def render_source_read(
     if record is not None:
         base += _render_null_replacements(record)
         base += _render_temporal_conversions(record)
+        base += _render_vector_assemblies(record)
         base += _render_defaults(record)
     return base
 
 
 def _needs_inline_schema(record: DmlRecord) -> bool:
     """The CSV_DELIMITED path must use an inline read schema (rather than the
-    pre-rendered output ``schema_var``) when the record has voids (need to drop)
-    or date/datetime fields with custom formats (need to read as String, then
-    convert via to_date / to_timestamp because Spark's CSV ``dateFormat`` option
-    is per-read, not per-column).
+    pre-rendered output ``schema_var``) when the record has
+
+      - voids (read for alignment, then dropped); or
+      - date/datetime fields (read as String, then to_date/to_timestamp); or
+      - fixed-length vector fields (read as N flat columns, then F.array assembled).
     """
-    return any(isinstance(f.type, (DmlVoid, DmlDate, DmlDatetime)) for f in record.fields)
+    for f in record.fields:
+        if isinstance(f.type, (DmlVoid, DmlDate, DmlDatetime)):
+            return True
+        if f.vector_length is not None:
+            return True
+    return False
+
+
+def _render_vector_assemblies(record: DmlRecord) -> str:
+    """For every fixed-length vector field, append:
+
+        .withColumn(name, F.array("name_0", ..., "name_{N-1}"))
+        .drop("name_0", ..., "name_{N-1}")
+
+    `_render_csv_with_inline_schema` flattens vectors into N positional columns
+    in the read schema; this step rolls them back up into a single ArrayType
+    column.
+    """
+    parts: list[str] = []
+    for f in record.fields:
+        if not isinstance(f.vector_length, int):
+            continue  # variable-length vectors (TC-015) handled separately
+        cols = [f'"{f.name}_{j}"' for j in range(f.vector_length)]
+        parts.append(f'.withColumn("{f.name}", F.array({", ".join(cols)}))')
+        parts.append(f'.drop({", ".join(cols)})')
+    return "".join(parts)
 
 
 def _render_defaults(record: DmlRecord) -> str:
@@ -189,7 +216,13 @@ def _render_csv_with_inline_schema(
         t = f.type
         if isinstance(t, DmlVoid):
             inline.append(f'StructField("_void_{i}", StringType(), True)')
-        elif isinstance(t, (DmlDate, DmlDatetime)):
+            continue
+        if isinstance(f.vector_length, int):
+            elem_src = spark_type_source(t)
+            for j in range(f.vector_length):
+                inline.append(f'StructField("{f.name}_{j}", {elem_src}, True)')
+            continue
+        if isinstance(t, (DmlDate, DmlDatetime)):
             inline.append(f'StructField("{f.name}", StringType(), True)')
         else:
             inline.append(f'StructField("{f.name}", {spark_type_source(t)}, True)')
@@ -197,7 +230,11 @@ def _render_csv_with_inline_schema(
     has_voids = any(isinstance(f.type, DmlVoid) for f in record.fields)
     base = f'spark.read{opts}.csv("{input_path}", schema={schema_inline})'
     if has_voids:
-        keep = [f'"{f.name}"' for f in record.fields if not isinstance(f.type, DmlVoid)]
+        keep = [
+            f'"{f.name}_{j}"' if isinstance(f.vector_length, int) else f'"{f.name}"'
+            for f in record.fields if not isinstance(f.type, DmlVoid)
+            for j in (range(f.vector_length) if isinstance(f.vector_length, int) else [None])
+        ]
         base = f'{base}.select({", ".join(keep)})'
     return base
 
