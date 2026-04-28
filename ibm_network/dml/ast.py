@@ -30,6 +30,16 @@ class DmlString:
 
 
 @dataclass(frozen=True)
+class DmlVoid:
+    """`void(...)` — present in the source data for positional alignment but
+    dropped from the output schema. See DML_TEST_SUITE TC-005.
+    """
+
+    length: int | None = None
+    delimiter: str | None = None
+
+
+@dataclass(frozen=True)
 class DmlDate:
     format: str = "yyyy-MM-dd"
 
@@ -39,7 +49,7 @@ class DmlDatetime:
     format: str = "yyyy-MM-dd HH:mm:ss"
 
 
-DmlScalar = DmlDecimal | DmlInteger | DmlReal | DmlString | DmlDate | DmlDatetime
+DmlScalar = DmlDecimal | DmlInteger | DmlReal | DmlString | DmlVoid | DmlDate | DmlDatetime
 
 
 @dataclass(frozen=True)

@@ -6,6 +6,7 @@ dml_type: decimal_t
         | integer_t
         | real_t
         | string_t
+        | void_t
         | date_t
         | datetime_t
 
@@ -20,6 +21,10 @@ real_t: "real" "(" ESCAPED_STRING ("," ESCAPED_STRING)? ")"
 string_t: "string" "(" string_args ")"
 string_args: INT                 -> string_fixed
            | ESCAPED_STRING      -> string_delim
+
+void_t: "void" "(" void_args ")"
+void_args: INT                   -> void_fixed
+         | ESCAPED_STRING        -> void_delim
 
 date_t: "date" "(" ESCAPED_STRING ")"
 datetime_t: "datetime" "(" ESCAPED_STRING ")"

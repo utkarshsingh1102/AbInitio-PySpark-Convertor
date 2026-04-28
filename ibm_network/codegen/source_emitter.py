@@ -17,7 +17,9 @@ from ibm_network.dml.ast import (
     DmlRecord,
     DmlScalar,
     DmlString,
+    DmlVoid,
 )
+from ibm_network.dml.type_map import spark_type_source
 
 
 def render_source_read(
@@ -45,6 +47,8 @@ def render_source_read(
     if strategy is ReadStrategy.CSV_DELIMITED:
         if schema_var is None:
             raise ValueError("CSV_DELIMITED requires a schema_var")
+        if record is not None and any(isinstance(f.type, DmlVoid) for f in record.fields):
+            return _render_csv_with_voids(record, input_path, delimiter)
         opts = _csv_options(delimiter)
         return f'spark.read{opts}.csv("{input_path}", schema={schema_var})'
     if strategy is ReadStrategy.CSV_INFER:
@@ -57,21 +61,45 @@ def render_source_read(
     raise NotImplementedError(f"read strategy not implemented yet: {strategy.value}")
 
 
+def _render_csv_with_voids(
+    record: DmlRecord, input_path: str, delimiter: str | None
+) -> str:
+    """CSV with void fields needs an inline read schema that *keeps* the voids
+    (so the comma-positional alignment is correct) followed by ``.select`` of
+    only the non-void columns.
+    """
+    opts = _csv_options(delimiter)
+    inline = []
+    for i, f in enumerate(record.fields):
+        if isinstance(f.type, DmlVoid):
+            inline.append(f'StructField("_void_{i}", StringType(), True)')
+        else:
+            inline.append(f'StructField("{f.name}", {spark_type_source(f.type)}, True)')
+    schema_inline = "StructType([" + ", ".join(inline) + "])"
+    keep = [f'"{f.name}"' for f in record.fields if not isinstance(f.type, DmlVoid)]
+    return (
+        f'spark.read{opts}.csv("{input_path}", schema={schema_inline})'
+        f'.select({", ".join(keep)})'
+    )
+
+
 def _render_text_substring(record: DmlRecord, input_path: str) -> str:
     """Read a fixed-width record by reading raw lines and projecting via substring.
 
     Walks the record once, accumulating the running 1-based byte offset. Each
-    field becomes ``F.substring("value", offset, width).cast("...").alias("name")``.
+    non-void field becomes ``F.substring("value", offset, width).cast(...).alias(...)``.
+    Void fields advance the offset but are not projected.
     """
     parts: list[str] = []
     offset = 1
     for f in record.fields:
         width = _fixed_width(f.type)
-        cast_to = _sql_cast(f.type)
-        expr = f'F.substring("value", {offset}, {width})'
-        if cast_to is not None:
-            expr = f'{expr}.cast("{cast_to}")'
-        parts.append(f'{expr}.alias("{f.name}")')
+        if not isinstance(f.type, DmlVoid):
+            cast_to = _sql_cast(f.type)
+            expr = f'F.substring("value", {offset}, {width})'
+            if cast_to is not None:
+                expr = f'{expr}.cast("{cast_to}")'
+            parts.append(f'{expr}.alias("{f.name}")')
         offset += width
     body = ",\n            ".join(parts)
     return (
@@ -84,9 +112,13 @@ def _render_text_substring(record: DmlRecord, input_path: str) -> str:
 def _fixed_width(scalar: DmlScalar) -> int:
     if isinstance(scalar, DmlString) and scalar.length is not None:
         return scalar.length
+    if isinstance(scalar, DmlVoid) and scalar.length is not None:
+        return scalar.length
     if isinstance(scalar, DmlDecimal) and scalar.precision is not None:
         return scalar.precision
     if isinstance(scalar, DmlInteger):
+        return scalar.size_bytes
+    if isinstance(scalar, DmlReal):
         return scalar.size_bytes
     raise ValueError(f"cannot derive fixed width for {scalar!r}")
 

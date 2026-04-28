@@ -15,6 +15,7 @@ from ibm_network.dml.ast import (
     DmlRecord,
     DmlScalar,
     DmlString,
+    DmlVoid,
 )
 
 _GRAMMAR_TEXT = (files("ibm_network.dml") / "grammar.lark").read_text()
@@ -70,6 +71,15 @@ class _DMLTransformer(Transformer):
     def string_t(self, items: list[DmlString]) -> DmlString:
         return items[0]
 
+    def void_fixed(self, items: list[Token]) -> DmlVoid:
+        return DmlVoid(length=int(items[0]))
+
+    def void_delim(self, items: list[Token]) -> DmlVoid:
+        return DmlVoid(delimiter=_unquote(str(items[0])))
+
+    def void_t(self, items: list[DmlVoid]) -> DmlVoid:
+        return items[0]
+
     def date_t(self, items: list[Token]) -> DmlDate:
         return DmlDate(format=_unquote(str(items[0])))
 
@@ -82,7 +92,9 @@ class _DMLTransformer(Transformer):
     def field(self, items: list[object]) -> DmlField:
         ty = items[0]
         name = str(items[1])
-        assert isinstance(ty, DmlDecimal | DmlInteger | DmlReal | DmlString | DmlDate | DmlDatetime)
+        assert isinstance(
+            ty, DmlDecimal | DmlInteger | DmlReal | DmlString | DmlVoid | DmlDate | DmlDatetime
+        )
         return DmlField(name=name, type=ty)
 
     def start(self, items: list[DmlField]) -> DmlRecord:

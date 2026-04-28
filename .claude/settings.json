@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -m pytest \"tests/test_dml_suite.py::test_schema[tc_005]\" \"tests/test_dml_suite.py::test_read[tc_005]\" -v)"
+    ]
+  }
+}

@@ -23,6 +23,7 @@ from ibm_network.dml.ast import (
     DmlRecord,
     DmlScalar,
     DmlString,
+    DmlVoid,
 )
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -79,7 +80,10 @@ def to_struct_field(field: DmlField) -> "object":
 
 
 def to_struct(record: DmlRecord) -> "StructType":
-    """Convert a `DmlRecord` to a `StructType`."""
+    """Convert a `DmlRecord` to a `StructType`. ``void`` fields are dropped from
+    the output schema (see DML_TEST_SUITE TC-005); they exist only to preserve
+    positional alignment in the source data.
+    """
     from pyspark.sql.types import StructType
 
-    return StructType([to_struct_field(f) for f in record.fields])
+    return StructType([to_struct_field(f) for f in record.fields if not isinstance(f.type, DmlVoid)])

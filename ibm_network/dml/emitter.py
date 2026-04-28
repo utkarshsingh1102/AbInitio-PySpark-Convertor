@@ -11,16 +11,22 @@ must agree byte-for-byte on what types they produce; tests pin both.
 
 from __future__ import annotations
 
-from ibm_network.dml.ast import DmlField, DmlRecord
+from ibm_network.dml.ast import DmlField, DmlRecord, DmlVoid
 from ibm_network.dml.parser import parse_dml
 from ibm_network.dml.type_map import spark_type_source
 
 
 def render_schema(record: DmlRecord, *, indent: int = 4) -> str:
-    """Render a `DmlRecord` as a `StructType([...])` source string."""
+    """Render a `DmlRecord` as a `StructType([...])` source string.
+
+    ``void`` fields are skipped — they exist for positional alignment in the
+    source data and are not part of the output schema.
+    """
     pad = " " * indent
     lines = ["StructType(["]
     for f in record.fields:
+        if isinstance(f.type, DmlVoid):
+            continue
         lines.append(f"{pad}{_render_struct_field(f)},")
     lines.append("])")
     return "\n".join(lines)
