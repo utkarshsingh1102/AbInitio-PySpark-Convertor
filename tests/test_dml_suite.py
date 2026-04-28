@@ -98,6 +98,15 @@ def _build_single_source_graph(tc_id: str, sample_path: Path) -> Graph:
 
 @pytest.fixture(scope="session")
 def spark():
+    # Force UTC at the OS level too — PySpark's timestamp → naive-datetime
+    # conversion can otherwise leak the JVM/Python local TZ even with
+    # `spark.sql.session.timeZone=UTC` set on the session.
+    import os
+    import time
+    os.environ["TZ"] = "UTC"
+    if hasattr(time, "tzset"):
+        time.tzset()
+
     pyspark_sql = pytest.importorskip("pyspark.sql")
     spark = (
         pyspark_sql.SparkSession.builder
@@ -106,6 +115,8 @@ def spark():
         .config("spark.ui.enabled", "false")
         .config("spark.sql.shuffle.partitions", "1")
         .config("spark.sql.session.timeZone", "UTC")
+        .config("spark.driver.extraJavaOptions", "-Duser.timezone=UTC")
+        .config("spark.executor.extraJavaOptions", "-Duser.timezone=UTC")
         .getOrCreate()
     )
     spark.sparkContext.setLogLevel("ERROR")

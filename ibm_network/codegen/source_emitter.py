@@ -19,6 +19,7 @@ from ibm_network.dml.ast import (
     DmlString,
     DmlVoid,
 )
+from ibm_network.dml.format_map import to_spark_format
 from ibm_network.dml.type_map import spark_type_source
 
 
@@ -47,8 +48,8 @@ def render_source_read(
     if strategy is ReadStrategy.CSV_DELIMITED:
         if schema_var is None:
             raise ValueError("CSV_DELIMITED requires a schema_var")
-        if record is not None and any(isinstance(f.type, DmlVoid) for f in record.fields):
-            base = _render_csv_with_voids(record, input_path, delimiter)
+        if record is not None and _needs_inline_schema(record):
+            base = _render_csv_with_inline_schema(record, input_path, delimiter)
         else:
             opts = _csv_options(delimiter)
             base = f'spark.read{opts}.csv("{input_path}", schema={schema_var})'
@@ -64,7 +65,42 @@ def render_source_read(
 
     if record is not None:
         base += _render_null_replacements(record)
+        base += _render_temporal_conversions(record)
     return base
+
+
+def _needs_inline_schema(record: DmlRecord) -> bool:
+    """The CSV_DELIMITED path must use an inline read schema (rather than the
+    pre-rendered output ``schema_var``) when the record has voids (need to drop)
+    or date/datetime fields with custom formats (need to read as String, then
+    convert via to_date / to_timestamp because Spark's CSV ``dateFormat`` option
+    is per-read, not per-column).
+    """
+    return any(isinstance(f.type, (DmlVoid, DmlDate, DmlDatetime)) for f in record.fields)
+
+
+def _render_temporal_conversions(record: DmlRecord) -> str:
+    """For every Date / Datetime field in `record`, append a `.withColumn(...)`
+    chain that parses the string column with the field's Spark format pattern.
+    Inline-schema reads keep date/datetime columns as StringType so this step
+    has something to convert.
+    """
+    parts: list[str] = []
+    for f in record.fields:
+        t = f.type
+        if isinstance(t, DmlDate):
+            spark_fmt = to_spark_format(t.format)
+            parts.append(
+                f'.withColumn("{f.name}", '
+                f'F.to_date(F.col("{f.name}"), "{spark_fmt}"))'
+            )
+        elif isinstance(t, DmlDatetime):
+            spark_fmt = to_spark_format(t.format)
+            parts.append(
+                f'.withColumn("{f.name}", '
+                f'F.to_timestamp(F.col("{f.name}"), "{spark_fmt}"))'
+            )
+    return "".join(parts)
 
 
 def _render_null_replacements(record: DmlRecord) -> str:
@@ -113,26 +149,34 @@ def _format_null_lit(sentinel: str, scalar: DmlScalar) -> str | None:
     return f'F.lit("{sentinel}")'
 
 
-def _render_csv_with_voids(
+def _render_csv_with_inline_schema(
     record: DmlRecord, input_path: str, delimiter: str | None
 ) -> str:
-    """CSV with void fields needs an inline read schema that *keeps* the voids
-    (so the comma-positional alignment is correct) followed by ``.select`` of
-    only the non-void columns.
+    """CSV read with an inline schema, used when the output schema diverges from
+    the read-time schema:
+
+      - voids are read for positional alignment but selected out;
+      - date/datetime fields are read as StringType because Spark CSV's
+        ``dateFormat`` option is global per read; later, ``_render_temporal_conversions``
+        appends ``.withColumn(...)`` calls that parse them with the right pattern.
     """
     opts = _csv_options(delimiter)
-    inline = []
+    inline: list[str] = []
     for i, f in enumerate(record.fields):
-        if isinstance(f.type, DmlVoid):
+        t = f.type
+        if isinstance(t, DmlVoid):
             inline.append(f'StructField("_void_{i}", StringType(), True)')
+        elif isinstance(t, (DmlDate, DmlDatetime)):
+            inline.append(f'StructField("{f.name}", StringType(), True)')
         else:
-            inline.append(f'StructField("{f.name}", {spark_type_source(f.type)}, True)')
+            inline.append(f'StructField("{f.name}", {spark_type_source(t)}, True)')
     schema_inline = "StructType([" + ", ".join(inline) + "])"
-    keep = [f'"{f.name}"' for f in record.fields if not isinstance(f.type, DmlVoid)]
-    return (
-        f'spark.read{opts}.csv("{input_path}", schema={schema_inline})'
-        f'.select({", ".join(keep)})'
-    )
+    has_voids = any(isinstance(f.type, DmlVoid) for f in record.fields)
+    base = f'spark.read{opts}.csv("{input_path}", schema={schema_inline})'
+    if has_voids:
+        keep = [f'"{f.name}"' for f in record.fields if not isinstance(f.type, DmlVoid)]
+        base = f'{base}.select({", ".join(keep)})'
+    return base
 
 
 def _render_text_substring(record: DmlRecord, input_path: str) -> str:

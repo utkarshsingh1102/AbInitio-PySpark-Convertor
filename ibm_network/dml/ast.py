@@ -44,11 +44,13 @@ class DmlVoid:
 @dataclass(frozen=True)
 class DmlDate:
     format: str = "yyyy-MM-dd"
+    delimiter: str | None = None
 
 
 @dataclass(frozen=True)
 class DmlDatetime:
     format: str = "yyyy-MM-dd HH:mm:ss"
+    delimiter: str | None = None
 
 
 DmlScalar = DmlDecimal | DmlInteger | DmlReal | DmlString | DmlVoid | DmlDate | DmlDatetime

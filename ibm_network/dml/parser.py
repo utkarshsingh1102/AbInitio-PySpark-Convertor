@@ -106,10 +106,14 @@ class _DMLTransformer(Transformer):
         return items[0]
 
     def date_t(self, items: list[Token]) -> DmlDate:
-        return DmlDate(format=_unquote(str(items[0])))
+        fmt = _unquote(str(items[0]))
+        delim = _unquote(str(items[1])) if len(items) > 1 else None
+        return DmlDate(format=fmt, delimiter=delim)
 
     def datetime_t(self, items: list[Token]) -> DmlDatetime:
-        return DmlDatetime(format=_unquote(str(items[0])))
+        fmt = _unquote(str(items[0]))
+        delim = _unquote(str(items[1])) if len(items) > 1 else None
+        return DmlDatetime(format=fmt, delimiter=delim)
 
     def dml_type(self, items: list[DmlScalar]) -> DmlScalar:
         return items[0]

@@ -28,8 +28,8 @@ void_t: "void" "(" void_args ")"
 void_args: INT                   -> void_fixed
          | ESCAPED_STRING        -> void_delim
 
-date_t: "date" "(" ESCAPED_STRING ")"
-datetime_t: "datetime" "(" ESCAPED_STRING ")"
+date_t: "date" "(" ESCAPED_STRING ")" ("(" ESCAPED_STRING ")")?
+datetime_t: "datetime" "(" ESCAPED_STRING ")" ("(" ESCAPED_STRING ")")?
 
 COMMENT: /\/\*(.|\n)*?\*\//
        | /\/\/[^\n]*/
