@@ -37,7 +37,8 @@ def test_parses_delimited_record() -> None:
 
 
 def test_rejects_garbage() -> None:
-    with pytest.raises(Exception):
+    from lark.exceptions import LarkError
+    with pytest.raises(LarkError):
         parse_dml("not a dml record")
 
 

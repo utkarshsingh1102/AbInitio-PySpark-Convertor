@@ -26,7 +26,7 @@ import pytest
 from ibm_network.codegen import synthesize
 from ibm_network.dml.parser import parse_dml
 from ibm_network.dml.type_mapper import to_struct
-from ibm_network.ir.models import Component, DMLRef, Edge, Graph, Port
+from ibm_network.ir.models import Component, DMLRef, Graph, Port
 
 FIX = Path(__file__).parent / "fixtures" / "dml_suite"
 TC_IDS = sorted(d.name for d in FIX.iterdir() if d.is_dir() and d.name.startswith("tc_"))

@@ -27,7 +27,7 @@ from ibm_network.dml.ast import (
 )
 
 if TYPE_CHECKING:  # pragma: no cover
-    from pyspark.sql.types import DataType, StructType
+    from pyspark.sql.types import DataType, StructField, StructType
 
 
 # Map integer size in bytes → Spark integer subtype class name. Single source of
@@ -37,7 +37,7 @@ INTEGER_BY_SIZE: dict[int, str] = {1: "ByteType", 2: "ShortType", 4: "IntegerTyp
 # Anything larger than 4 bytes maps to LongType.
 
 
-def to_dtype(scalar: DmlScalar) -> "DataType":
+def to_dtype(scalar: DmlScalar) -> DataType:
     """Convert a DML scalar AST node to a Spark `DataType` instance.
 
     Raises:
@@ -72,14 +72,14 @@ def to_dtype(scalar: DmlScalar) -> "DataType":
     raise TypeError(f"unhandled DML scalar: {scalar!r}")
 
 
-def to_struct_field(field: DmlField) -> "object":
+def to_struct_field(field: DmlField) -> StructField:
     """Convert a `DmlField` to a `StructField` (nullable=True, no metadata)."""
     from pyspark.sql.types import StructField
 
     return StructField(field.name, to_dtype(field.type), True)
 
 
-def to_struct(record: DmlRecord) -> "StructType":
+def to_struct(record: DmlRecord) -> StructType:
     """Convert a `DmlRecord` to a `StructType`. ``void`` fields are dropped from
     the output schema (see DML_TEST_SUITE TC-005); they exist only to preserve
     positional alignment in the source data.

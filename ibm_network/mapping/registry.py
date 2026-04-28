@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Callable
+from collections.abc import Callable
 
 from ibm_network.ir.models import Component
 from ibm_network.mapping.base import ComponentMapper, MappingError, Op

@@ -28,7 +28,6 @@ from pyspark.sql.types import (
     DecimalType,
     DoubleType,
     FloatType,
-    IntegerType,
     LongType,
     StringType,
     StructField,

@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from lark import Token, Tree
 
 from ibm_network.mapping.transform_expr.parser import parse_expr, parse_transform_block
 
-# DML builtin → PySpark function-source. Each entry is (formatter, arity).
+# DML builtin → PySpark function-source. Each entry is (formatter).
 # `formatter(args_src)` returns the Python source expression.
-_BUILTINS: dict[str, callable] = {  # type: ignore[type-arg]
+_BUILTINS: dict[str, Callable[[list[str]], str]] = {
     "is_null": lambda a: f"({a[0]}).isNull()",
     "is_blank": lambda a: f"(({a[0]}).isNull() | ({a[0]} == F.lit('')))",
     "is_defined": lambda a: f"({a[0]}).isNotNull()",

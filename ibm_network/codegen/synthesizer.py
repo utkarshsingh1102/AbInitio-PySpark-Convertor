@@ -8,15 +8,16 @@ The synthesizer is deterministic. The LLM is consulted only:
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from importlib.resources import files
-from typing import Iterable
 
 from jinja2 import Environment
 
 from ibm_network.codegen.llm_client import LLMClient, LLMUnavailableError
 from ibm_network.codegen.prompt import POLISH_SYSTEM, build_polish_prompt
-from ibm_network.codegen.read_strategy import ReadStrategy, choose as choose_read_strategy
+from ibm_network.codegen.read_strategy import ReadStrategy
+from ibm_network.codegen.read_strategy import choose as choose_read_strategy
 from ibm_network.codegen.source_emitter import render_source_read
 from ibm_network.dml.ast import DmlDecimal, DmlReal, DmlRecord, DmlString, DmlVoid
 from ibm_network.dml.emitter import render_schema

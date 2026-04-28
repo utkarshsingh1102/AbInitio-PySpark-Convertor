@@ -14,7 +14,7 @@ class _FakeLoader:
     def __init__(self, *_args: object, **_kw: object) -> None:
         pass
 
-    def __enter__(self) -> "_FakeLoader":
+    def __enter__(self) -> _FakeLoader:
         return self
 
     def __exit__(self, *_exc: object) -> None:
