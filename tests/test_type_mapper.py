@@ -40,8 +40,11 @@ def test_decimal_with_precision_and_scale() -> None:
     assert to_dtype(DmlDecimal(precision=10, scale=2)) == DecimalType(10, 2)
 
 
-def test_decimal_default_precision() -> None:
-    assert to_dtype(DmlDecimal(delimiter=",")) == DecimalType(38, 0)
+def test_decimal_no_scale_is_long() -> None:
+    """`decimal(N)` and `decimal(",")` map to LongType — only an explicit scale
+    > 0 produces a true DecimalType. See DML_TEST_SUITE TC-001..TC-003."""
+    assert to_dtype(DmlDecimal(delimiter=",")) == LongType()
+    assert to_dtype(DmlDecimal(precision=10, scale=0)) == LongType()
 
 
 def test_integer_size_dispatch() -> None:
@@ -57,7 +60,9 @@ def test_simple_scalars() -> None:
     assert to_dtype(DmlDatetime(format="YYYYMMDDHHMMSS")) == TimestampType()
 
 
-def test_to_struct_preserves_metadata() -> None:
+def test_to_struct_omits_metadata() -> None:
+    """StructFields are emitted without metadata so the typed schema matches the
+    suite's expected_schema.json (which has empty metadata everywhere)."""
     record = DmlRecord(fields=(
         DmlField(name="id", type=DmlDecimal(precision=10, scale=0)),
         DmlField(name="name", type=DmlString(length=20)),
@@ -65,7 +70,7 @@ def test_to_struct_preserves_metadata() -> None:
     ))
     actual = to_struct(record)
     assert actual == StructType([
-        StructField("id", DecimalType(10, 0), True),
-        StructField("name", StringType(), True, {"length": 20}),
-        StructField("signup", DateType(), True, {"format": "YYYY-MM-DD"}),
+        StructField("id", LongType(), True),
+        StructField("name", StringType(), True),
+        StructField("signup", DateType(), True),
     ])

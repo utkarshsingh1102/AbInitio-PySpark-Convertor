@@ -18,6 +18,8 @@ from ibm_network.dml.ast import (
 
 def spark_type_source(scalar: DmlScalar) -> str:
     if isinstance(scalar, DmlDecimal):
+        if scalar.scale == 0:
+            return "LongType()"
         precision = scalar.precision if scalar.precision is not None else 38
         return f"DecimalType({precision}, {scalar.scale})"
     if isinstance(scalar, DmlInteger):
@@ -39,20 +41,3 @@ def _integer_source(size_bytes: int) -> str:
     if size_bytes <= 4:
         return "IntegerType()"
     return "LongType()"
-
-
-def field_metadata(scalar: DmlScalar) -> dict[str, str | int]:
-    """Metadata to round-trip on `StructField` so downstream readers can recover format/length."""
-    meta: dict[str, str | int] = {}
-    if isinstance(scalar, DmlString):
-        if scalar.length is not None:
-            meta["length"] = scalar.length
-        if scalar.delimiter is not None:
-            meta["delimiter"] = scalar.delimiter
-    elif isinstance(scalar, DmlDecimal) and scalar.delimiter is not None:
-        meta["delimiter"] = scalar.delimiter
-    elif isinstance(scalar, DmlDate):
-        meta["format"] = scalar.format
-    elif isinstance(scalar, DmlDatetime):
-        meta["format"] = scalar.format
-    return meta

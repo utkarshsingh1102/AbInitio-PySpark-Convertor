@@ -44,6 +44,11 @@ def to_dtype(scalar: DmlScalar) -> "DataType":
     from pyspark.sql import types as T
 
     if isinstance(scalar, DmlDecimal):
+        # Ab Initio convention: a decimal with no fractional component is a signed
+        # integer regardless of byte width. Only `decimal("P.S", delim)` (scale > 0)
+        # maps to a true DecimalType.
+        if scalar.scale == 0:
+            return T.LongType()
         precision = scalar.precision if scalar.precision is not None else 38
         return T.DecimalType(precision, scalar.scale)
     if isinstance(scalar, DmlInteger):
@@ -64,14 +69,10 @@ def to_dtype(scalar: DmlScalar) -> "DataType":
 
 
 def to_struct_field(field: DmlField) -> "object":
-    """Convert a `DmlField` to a `StructField` (nullable=True). Metadata is preserved
-    via `type_map.field_metadata` so the typed and source-string paths agree.
-    """
+    """Convert a `DmlField` to a `StructField` (nullable=True, no metadata)."""
     from pyspark.sql.types import StructField
 
-    from ibm_network.dml.type_map import field_metadata
-
-    return StructField(field.name, to_dtype(field.type), True, field_metadata(field.type))
+    return StructField(field.name, to_dtype(field.type), True)
 
 
 def to_struct(record: DmlRecord) -> "StructType":

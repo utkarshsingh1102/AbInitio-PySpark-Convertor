@@ -18,6 +18,7 @@ from ibm_network.codegen.llm_client import LLMClient, LLMUnavailableError
 from ibm_network.codegen.prompt import POLISH_SYSTEM, build_polish_prompt
 from ibm_network.codegen.read_strategy import ReadStrategy, choose as choose_read_strategy
 from ibm_network.codegen.source_emitter import render_source_read
+from ibm_network.dml.ast import DmlDecimal, DmlRecord, DmlString
 from ibm_network.dml.emitter import render_schema
 from ibm_network.dml.parser import parse_dml
 from ibm_network.dml.warnings import (
@@ -144,8 +145,25 @@ def _emit_source(comp: Component) -> tuple[tuple[str, str] | None, str, list[str
         schema_var = f"schema_{_safe_id(comp.id)}"
         schema_entry = (schema_var, render_schema(record))
 
-    read_body = render_source_read(strategy, schema_var=schema_var, input_path=input_path)
+    delimiter = _record_delimiter(record) if record is not None else None
+    read_body = render_source_read(
+        strategy, schema_var=schema_var, input_path=input_path, delimiter=delimiter
+    )
     return schema_entry, f"{var} = {read_body}", notes
+
+
+def _record_delimiter(record: DmlRecord) -> str | None:
+    """Pick the field delimiter to use for CSV reads.
+
+    Uses the first non-newline delimiter found among the record's fields. Mixed
+    delimiters (TC-010) need a different strategy and are out of scope here.
+    """
+    for f in record.fields:
+        t = f.type
+        delim = t.delimiter if isinstance(t, (DmlString, DmlDecimal)) else None
+        if delim and delim != "\n":
+            return delim
+    return None
 
 
 def _emit_component(

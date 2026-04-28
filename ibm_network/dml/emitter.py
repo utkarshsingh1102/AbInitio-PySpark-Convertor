@@ -5,16 +5,15 @@ schema layer. It does not import PySpark — generated code references the names
 `StructType`, `StructField`, etc. by string, and the generated `.py` file
 imports them itself.
 
-The typed counterpart is `ibm_network.dml.type_mapper.to_struct`.
+The typed counterpart is `ibm_network.dml.type_mapper.to_struct`. The two paths
+must agree byte-for-byte on what types they produce; tests pin both.
 """
 
 from __future__ import annotations
 
-import json
-
 from ibm_network.dml.ast import DmlField, DmlRecord
 from ibm_network.dml.parser import parse_dml
-from ibm_network.dml.type_map import field_metadata, spark_type_source
+from ibm_network.dml.type_map import spark_type_source
 
 
 def render_schema(record: DmlRecord, *, indent: int = 4) -> str:
@@ -33,7 +32,4 @@ def render_schema_from_text(text: str, *, indent: int = 4) -> str:
 
 
 def _render_struct_field(field: DmlField) -> str:
-    type_src = spark_type_source(field.type)
-    meta = field_metadata(field.type)
-    meta_arg = f", metadata={json.dumps(meta)}" if meta else ""
-    return f'StructField("{field.name}", {type_src}, True{meta_arg})'
+    return f'StructField("{field.name}", {spark_type_source(field.type)}, True)'

@@ -29,9 +29,11 @@ def test_customer_struct_source_parses_as_python() -> None:
 
 
 def test_customer_struct_source_contains_expected_types() -> None:
+    """`decimal(N)` (no scale) maps to LongType per the suite contract — only
+    `decimal("P.S", delim)` produces a true DecimalType."""
     record = parse_dml_file(FIX / "customer.dml")
     src = schema_to_struct_source(record)
-    assert "DecimalType(10, 0)" in src
+    assert 'StructField("customer_id", LongType()' in src
     assert "DecimalType(12, 2)" in src
     assert 'StructField("name", StringType()' in src
     assert "DateType()" in src
@@ -39,17 +41,18 @@ def test_customer_struct_source_contains_expected_types() -> None:
     assert "IntegerType()" in src
 
 
-def test_metadata_records_format() -> None:
+def test_struct_fields_have_no_metadata() -> None:
+    """Schema emission no longer leaks DML format strings into StructField metadata —
+    the suite expects empty metadata."""
     record = parse_dml_file(FIX / "customer.dml")
     src = schema_to_struct_source(record)
-    assert '"format": "YYYY-MM-DD"' in src
-    assert '"length": 20' in src
+    assert "metadata=" not in src
 
 
 def test_dml_text_to_struct_source_roundtrip() -> None:
     text = "record decimal(8) id; string(10) name; end"
     src = dml_text_to_struct_source(text)
-    assert 'StructField("id", DecimalType(8, 0)' in src
+    assert 'StructField("id", LongType()' in src
     assert 'StructField("name", StringType()' in src
 
 

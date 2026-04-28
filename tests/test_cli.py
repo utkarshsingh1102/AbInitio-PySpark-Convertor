@@ -57,5 +57,5 @@ def test_convert_writes_python_file(tmp_path: Path, monkeypatch) -> None:
     assert out_file.exists()
     code = out_file.read_text()
     assert "build_pipeline" in code
-    assert 'spark.read.csv("/d/in.csv"' in code
+    assert '.csv("/d/in.csv"' in code
     assert "df_srt" in code

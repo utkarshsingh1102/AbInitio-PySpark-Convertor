@@ -72,7 +72,7 @@ def test_synthesize_contains_expected_pieces() -> None:
     graph = _build_sample_graph()
     result = synthesize(graph, enable_llm_fallback=False, enable_llm_polish=False)
     code = result.code
-    assert 'spark.read.csv("/data/customers.csv"' in code
+    assert '.csv("/data/customers.csv"' in code
     assert "schema=schema_src" in code
     assert "df_src.select(" in code
     assert "F.upper(" in code
@@ -88,7 +88,7 @@ def test_synthesize_includes_struct_for_source() -> None:
     graph = _build_sample_graph()
     result = synthesize(graph, enable_llm_fallback=False, enable_llm_polish=False)
     assert "schema_src = StructType([" in result.code
-    assert 'StructField("id", DecimalType(10, 0)' in result.code
+    assert 'StructField("id", LongType()' in result.code
 
 
 def test_synthesize_topological_join() -> None:
