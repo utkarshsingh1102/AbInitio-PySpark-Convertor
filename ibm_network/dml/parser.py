@@ -164,6 +164,18 @@ class _DMLTransformer(Transformer):
         nested = DmlNested(fields=tuple(c for c in children if isinstance(c, DmlField)))
         return DmlField(name=str(name_tok), type=nested)
 
+    def nested_vector_field(self, items: list[object]) -> DmlField:
+        # items: [Token(CNAME)=disc, DmlField..., Token(CNAME)=name]
+        disc_tok = items[0]
+        children = items[1:-1]
+        name_tok = items[-1]
+        nested = DmlNested(
+            fields=tuple(c for c in children if isinstance(c, DmlField))
+        )
+        return DmlField(
+            name=str(name_tok), type=nested, vector_length=str(disc_tok),
+        )
+
     def union_field(self, items: list[object]) -> DmlField:
         *children, name_tok = items
         nested = DmlNested(

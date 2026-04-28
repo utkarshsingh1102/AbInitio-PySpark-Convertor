@@ -119,6 +119,11 @@ def _render_struct_assemblies(record: DmlRecord) -> str:
 def _emit_assemblies(fields, parts: list[str]) -> None:
     for f in fields:
         if isinstance(f.type, DmlNested):
+            # Vector-of-records fields are assembled in-place by the
+            # TEXT_SPLIT_REGEX path; their inner column names never exist as
+            # flat columns, so don't try to F.struct(...) them.
+            if f.vector_length is not None:
+                continue
             _emit_assemblies(f.type.fields, parts)
             inner = ", ".join(f'"{c.name}"' for c in f.type.fields)
             parts.append(f'.withColumn("{f.name}", F.struct({inner}))')
@@ -379,6 +384,23 @@ def _render_text_split_regex(record: DmlRecord, input_path: str) -> str:
 
     for f in record.fields:
         t = f.type
+        if isinstance(t, DmlNested) and isinstance(f.vector_length, str):
+            disc = f.vector_length
+            base = _format_offset_expr(constant, sym_terms)
+            n = len(t.fields)
+            pairs: list[str] = []
+            for j, inner in enumerate(t.fields):
+                idx = f"int({base} + i * {n} + {j})"
+                e = f"element_at(_p, {idx})"
+                cast = _sql_cast(inner.type) if not isinstance(inner.type, DmlString) else None
+                pairs.append(f"'{inner.name}', cast({e} as {cast})" if cast else f"'{inner.name}', {e}")
+            sql = (
+                f"transform(sequence(0, {disc} - 1), "
+                f"i -> named_struct({', '.join(pairs)}))"
+            )
+            parts.append(f'.withColumn("{f.name}", F.expr("{sql}"))')
+            sym_terms.extend([disc] * n)
+            continue
         if isinstance(f.vector_length, str):
             disc = f.vector_length
             cur = _format_offset_expr(constant, sym_terms)
