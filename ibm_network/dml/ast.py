@@ -9,6 +9,11 @@ class DmlDecimal:
     scale: int = 0
     delimiter: str | None = None
     null_value: str | None = None
+    # "decimal" (default), "packed" (TC-020 packed_decimal), or "zoned"
+    # (TC-020 zoned_decimal). The synthesizer flips MANUAL_REVIEW when it sees
+    # a non-default kind; the schema emitter ignores it (mainframe variants
+    # land on the same Spark type as the equivalent decimal).
+    kind: str = "decimal"
 
 
 @dataclass(frozen=True)
@@ -64,6 +69,10 @@ class DmlNested:
     """
 
     fields: tuple = ()  # tuple[DmlField, ...]  — recursive forward ref
+    # `union ... end name;` parses to the same shape as a nested record, but
+    # downstream consumers (warnings, eventually population logic) need to
+    # know it was a union to flag it as MANUAL_REVIEW.
+    is_union: bool = False
 
 
 @dataclass(frozen=True)

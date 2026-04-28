@@ -72,7 +72,17 @@ class _DMLTransformer(Transformer):
         """
         strings, null_value = _partition_args(items)
         if len(strings) == 1:
-            return DmlDecimal(delimiter=strings[0], null_value=null_value)
+            # Two single-arg forms collide here: a delimiter (decimal(",")) vs a
+            # bare precision.scale used by mainframe variants
+            # (packed_decimal("7.2")). Disambiguate by checking for a digit-dot
+            # pattern.
+            only = strings[0]
+            if "." in only and only.replace(".", "").isdigit():
+                p, s = only.split(".", 1)
+                return DmlDecimal(precision=int(p), scale=int(s), null_value=null_value)
+            if only.isdigit():
+                return DmlDecimal(precision=int(only), null_value=null_value)
+            return DmlDecimal(delimiter=only, null_value=null_value)
         precision_str = strings[0]
         delim = strings[1]
         if "." in precision_str:
@@ -87,6 +97,20 @@ class _DMLTransformer(Transformer):
 
     def decimal_t(self, items: list[DmlDecimal]) -> DmlDecimal:
         return items[0]
+
+    def packed_decimal_t(self, items: list[DmlDecimal]) -> DmlDecimal:
+        d = items[0]
+        return DmlDecimal(
+            precision=d.precision, scale=d.scale,
+            delimiter=d.delimiter, null_value=d.null_value, kind="packed",
+        )
+
+    def zoned_decimal_t(self, items: list[DmlDecimal]) -> DmlDecimal:
+        d = items[0]
+        return DmlDecimal(
+            precision=d.precision, scale=d.scale,
+            delimiter=d.delimiter, null_value=d.null_value, kind="zoned",
+        )
 
     def integer_t(self, items: list[Token]) -> DmlInteger:
         return DmlInteger(size_bytes=int(items[0]))
@@ -138,6 +162,14 @@ class _DMLTransformer(Transformer):
         # children are DmlField...; final item is the CNAME naming the sub-record.
         *children, name_tok = items
         nested = DmlNested(fields=tuple(c for c in children if isinstance(c, DmlField)))
+        return DmlField(name=str(name_tok), type=nested)
+
+    def union_field(self, items: list[object]) -> DmlField:
+        *children, name_tok = items
+        nested = DmlNested(
+            fields=tuple(c for c in children if isinstance(c, DmlField)),
+            is_union=True,
+        )
         return DmlField(name=str(name_tok), type=nested)
 
     def scalar_field(self, items: list[object]) -> DmlField:

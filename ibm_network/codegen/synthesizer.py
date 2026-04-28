@@ -19,7 +19,14 @@ from ibm_network.codegen.prompt import POLISH_SYSTEM, build_polish_prompt
 from ibm_network.codegen.read_strategy import ReadStrategy
 from ibm_network.codegen.read_strategy import choose as choose_read_strategy
 from ibm_network.codegen.source_emitter import render_source_read
-from ibm_network.dml.ast import DmlDecimal, DmlReal, DmlRecord, DmlString, DmlVoid
+from ibm_network.dml.ast import (
+    DmlDecimal,
+    DmlNested,
+    DmlReal,
+    DmlRecord,
+    DmlString,
+    DmlVoid,
+)
 from ibm_network.dml.emitter import render_schema
 from ibm_network.dml.parser import parse_dml
 from ibm_network.dml.warnings import (
@@ -27,7 +34,10 @@ from ibm_network.dml.warnings import (
     llm_fallback_failed,
     llm_polish_skipped,
     no_dml_available,
+    packed_decimal_manual,
+    union_degraded,
     unmappable_component,
+    zoned_decimal_manual,
 )
 from ibm_network.ir.models import Component, Graph, Port
 from ibm_network.mapping import map_component
@@ -139,6 +149,15 @@ def _emit_source(comp: Component) -> tuple[tuple[str, str] | None, str, list[str
     else:
         notes.append(no_dml_available(comp.id).format())
 
+    if record is not None:
+        for f in _walk_fields(record.fields):
+            if isinstance(f.type, DmlNested) and f.type.is_union:
+                notes.append(union_degraded(comp.id, f.name).format())
+            elif isinstance(f.type, DmlDecimal) and f.type.kind == "packed":
+                notes.append(packed_decimal_manual(comp.id, f.name).format())
+            elif isinstance(f.type, DmlDecimal) and f.type.kind == "zoned":
+                notes.append(zoned_decimal_manual(comp.id, f.name).format())
+
     strategy = choose_read_strategy(record)
     schema_entry: tuple[str, str] | None = None
     schema_var: str | None = None
@@ -229,6 +248,16 @@ def _first_dml(dml_refs: Iterable, ports: Iterable[Port]) -> str | None:
         if d.raw_text:
             return d.raw_text
     return None
+
+
+def _walk_fields(fields):
+    """Yield every DmlField in the record, descending into DmlNested containers
+    so callers can spot unions / mainframe scalars regardless of nesting depth.
+    """
+    for f in fields:
+        yield f
+        if isinstance(f.type, DmlNested):
+            yield from _walk_fields(f.type.fields)
 
 
 def _safe_id(component_id: str) -> str:

@@ -102,3 +102,35 @@ def llm_fallback_failed(source_id: str, error: str) -> DmlWarning:
 
 def llm_polish_skipped(reason: str) -> DmlWarning:
     return DmlWarning(WarningKind.LLM_POLISH_SKIPPED, "polish", reason)
+
+
+def union_degraded(source_id: str, name: str) -> DmlWarning:
+    return DmlWarning(
+        WarningKind.UNION_DEGRADED, source_id,
+        f"union {name!r} mapped to struct of nullable branches; "
+        "verify population logic downstream.",
+    )
+
+
+def packed_decimal_manual(source_id: str, name: str) -> DmlWarning:
+    return DmlWarning(
+        WarningKind.PACKED_DECIMAL_MANUAL, source_id,
+        f"packed_decimal field {name!r} requires byte-level decoding; "
+        "generated code is a stub — review before production use.",
+    )
+
+
+def zoned_decimal_manual(source_id: str, name: str) -> DmlWarning:
+    return DmlWarning(
+        WarningKind.ZONED_DECIMAL_MANUAL, source_id,
+        f"zoned_decimal field {name!r} requires byte-level decoding; "
+        "generated code is a stub — review before production use.",
+    )
+
+
+def ebcdic_manual(source_id: str) -> DmlWarning:
+    return DmlWarning(
+        WarningKind.EBCDIC_MANUAL, source_id,
+        "EBCDIC source detected; generated reader uses binaryFile + decode('Cp037') "
+        "and is unverified — review before production use.",
+    )

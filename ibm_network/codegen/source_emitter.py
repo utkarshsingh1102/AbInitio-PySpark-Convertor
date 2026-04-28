@@ -81,6 +81,17 @@ def render_source_read(
     return base
 
 
+def _iter_leaves(fields):
+    """Yield non-Nested DmlFields, descending through DmlNested containers so
+    helpers (defaults, null replacement, temporal conversion) can apply by leaf
+    name regardless of how deep the field sits in a sub-record / union."""
+    for f in fields:
+        if isinstance(f.type, DmlNested):
+            yield from _iter_leaves(f.type.fields)
+        else:
+            yield f
+
+
 def _has_nested(record: DmlRecord) -> bool:
     return any(isinstance(f.type, DmlNested) for f in record.fields)
 
@@ -157,7 +168,7 @@ def _render_defaults(record: DmlRecord) -> str:
     safe to include in one dict.
     """
     pairs: list[str] = []
-    for f in record.fields:
+    for f in _iter_leaves(record.fields):
         if isinstance(f.type, DmlVoid) or f.default is None:
             continue
         pairs.append(f'"{f.name}": {_default_literal(f.default)}')
@@ -179,7 +190,7 @@ def _render_temporal_conversions(record: DmlRecord) -> str:
     has something to convert.
     """
     parts: list[str] = []
-    for f in record.fields:
+    for f in _iter_leaves(record.fields):
         t = f.type
         if isinstance(t, DmlDate):
             spark_fmt = to_spark_format(t.format)
@@ -204,7 +215,7 @@ def _render_null_replacements(record: DmlRecord) -> str:
     real Ab Initio records have *per-field* sentinels (TC-006).
     """
     parts: list[str] = []
-    for f in record.fields:
+    for f in _iter_leaves(record.fields):
         sentinel = getattr(f.type, "null_value", None)
         if sentinel is None or isinstance(f.type, (DmlVoid, DmlNested)):
             continue

@@ -2,6 +2,7 @@ start: "record" field+ "end" ";"?
 
 field: dml_type vector_suffix? CNAME field_default? ";"     -> scalar_field
      | "record" field+ "end" CNAME ";"                       -> nested_field
+     | "union" field+ "end" CNAME ";"                        -> union_field
 
 vector_suffix: "[" INT "]"     -> vector_fixed
              | "[" CNAME "]"   -> vector_var
@@ -12,6 +13,8 @@ default_literal: ESCAPED_STRING -> default_string
                | SIGNED_NUMBER  -> default_number
 
 dml_type: decimal_t
+        | packed_decimal_t
+        | zoned_decimal_t
         | integer_t
         | real_t
         | string_t
@@ -20,6 +23,8 @@ dml_type: decimal_t
         | datetime_t
 
 decimal_t: "decimal" "(" decimal_args ")"
+packed_decimal_t: "packed_decimal" "(" decimal_args ")"
+zoned_decimal_t: "zoned_decimal" "(" decimal_args ")"
 decimal_args: INT ("," INT)?                                                   -> decimal_fixed
             | ESCAPED_STRING ("," ESCAPED_STRING)? ("," null_indicator)?       -> decimal_str_form
 
