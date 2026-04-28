@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>IBM Network — Ab Initio → PySpark</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header>
+    <h1>Ab Initio → PySpark Convertor</h1>
+    <p class="sub">Paste or upload Ab Initio code, get back PySpark.</p>
+  </header>
+
+  <nav class="tabs" role="tablist">
+    <button class="tab-btn is-active" data-tab="dml">DML schema</button>
+    <button class="tab-btn" data-tab="transform">Transform body</button>
+    <button class="tab-btn" data-tab="expr">Single expression</button>
+    <button class="tab-btn" data-tab="pipeline">Full pipeline</button>
+  </nav>
+
+  <main>
+    <!-- DML tab -->
+    <section class="tab-pane is-active" id="tab-dml">
+      <div class="row">
+        <label class="upload">
+          <input type="file" accept=".dml,.txt" data-target="dml-input" />
+          <span>Upload .dml file…</span>
+        </label>
+      </div>
+      <textarea id="dml-input" placeholder="record
+  decimal(10) id;
+  string(20) name;
+  date(&quot;YYYY-MM-DD&quot;) signup;
+  integer(4) score;
+end"></textarea>
+      <div class="actions">
+        <button class="primary" data-action="convert-dml">Convert</button>
+        <button data-action="copy" data-source="dml-output">Copy</button>
+        <button data-action="download" data-source="dml-py" data-filename="schema.py">Download .py</button>
+      </div>
+      <pre class="output" id="dml-output" aria-live="polite"></pre>
+      <textarea id="dml-py" hidden></textarea>
+    </section>
+
+    <!-- Transform tab -->
+    <section class="tab-pane" id="tab-transform">
+      <div class="row">
+        <label class="upload">
+          <input type="file" accept=".xfr,.dml,.txt" data-target="xfr-input" />
+          <span>Upload .xfr / transform file…</span>
+        </label>
+      </div>
+      <textarea id="xfr-input" placeholder='out.id   :: in.id;
+out.name :: string_upcase(in.name);
+out.tier :: if (in.score > 50) "gold" else "silver";'></textarea>
+      <div class="actions">
+        <button class="primary" data-action="convert-transform">Convert</button>
+        <button data-action="copy" data-source="xfr-output">Copy</button>
+        <button data-action="download" data-source="xfr-py" data-filename="reshape.py">Download .py</button>
+      </div>
+      <pre class="output" id="xfr-output" aria-live="polite"></pre>
+      <textarea id="xfr-py" hidden></textarea>
+    </section>
+
+    <!-- Expression tab -->
+    <section class="tab-pane" id="tab-expr">
+      <textarea id="expr-input" placeholder='in.amount > 100 and in.status = "active"'></textarea>
+      <div class="actions">
+        <button class="primary" data-action="convert-expr">Convert</button>
+        <button data-action="copy" data-source="expr-output">Copy</button>
+      </div>
+      <pre class="output" id="expr-output" aria-live="polite"></pre>
+    </section>
+
+    <!-- Pipeline tab -->
+    <section class="tab-pane" id="tab-pipeline">
+      <p class="hint">
+        Paste a JSON graph spec (matches the IR schema). The example below produces a
+        runnable PySpark pipeline. Click <em>Load example</em> if you want to start from one.
+      </p>
+      <div class="row">
+        <label class="upload">
+          <input type="file" accept=".json,.txt" data-target="pipeline-input" />
+          <span>Upload .json…</span>
+        </label>
+        <button data-action="load-example">Load example</button>
+      </div>
+      <textarea id="pipeline-input" placeholder='{"name": "...", "components": [...], "edges": [...]}'></textarea>
+      <div class="actions">
+        <button class="primary" data-action="convert-pipeline">Generate</button>
+        <button data-action="copy" data-source="pipeline-output">Copy</button>
+        <button data-action="download" data-source="pipeline-output" data-filename="pipeline.py">Download .py</button>
+      </div>
+      <pre class="output" id="pipeline-output" aria-live="polite"></pre>
+      <pre class="notes" id="pipeline-notes"></pre>
+    </section>
+  </main>
+
+  <footer>
+    <small>v1 supports REFORMAT, FILTER_BY_EXPRESSION, JOIN, SORT, ROLLUP, DEDUP_SORTED + DML primitives.</small>
+  </footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

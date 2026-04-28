@@ -1,10 +1,14 @@
-.PHONY: install dev infra-up infra-down test lint typecheck clean
+.PHONY: install dev web infra-up infra-down test lint typecheck clean
 
 install:
 	python3 -m pip install -e .
 
 dev:
 	python3 -m pip install -e ".[dev]"
+
+web:
+	python3 -m pip install -e ".[web]"
+	python3 -m uvicorn ibm_network.web.server:app --reload --port 8000
 
 infra-up:
 	docker compose up -d neo4j ollama

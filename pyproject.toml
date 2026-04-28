@@ -30,6 +30,10 @@ dev = [
 spark = [
     "pyspark>=3.5",
 ]
+web = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.27",
+]
 
 [project.scripts]
 ibm-net = "ibm_network.cli:main"
@@ -43,6 +47,7 @@ include = ["ibm_network*"]
 "ibm_network.mapping.transform_expr" = ["*.lark"]
 "ibm_network.codegen.templates" = ["*.j2"]
 "ibm_network.config" = ["*.yaml"]
+"ibm_network.web" = ["static/*.html", "static/*.css", "static/*.js"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
