@@ -6,7 +6,10 @@ from pathlib import Path
 
 from lark import Lark, Token, Transformer, Tree
 
+import dataclasses
+
 from ibm_network.dml.ast import (
+    DmlCondition,
     DmlDate,
     DmlDatetime,
     DmlDecimal,
@@ -21,9 +24,10 @@ from ibm_network.dml.ast import (
 )
 
 _GRAMMAR_TEXT = (files("ibm_network.dml") / "grammar.lark").read_text()
-# LALR is faster than Earley and the v1 grammar is unambiguous; switching here so
-# that the fixture suite (re-parses 25 inputs per run) doesn't pay Earley overhead.
-_PARSER = Lark(_GRAMMAR_TEXT, start="start", parser="lalr")
+# Earley accepts the conditional-record grammar (TC-017/018) without the
+# reduce/reduce conflicts LALR(1) flags around the `if (...) field [else ...]`
+# shape. Throughput on the 25-fixture suite is still well under a second.
+_PARSER = Lark(_GRAMMAR_TEXT, start="start", parser="earley")
 
 
 @dataclass(frozen=True)
@@ -223,8 +227,65 @@ class _DMLTransformer(Transformer):
             return float(text)
         return int(text)
 
-    def start(self, items: list[DmlField]) -> DmlRecord:
-        return DmlRecord(fields=tuple(items))
+    def start(self, items: list[object]) -> DmlRecord:
+        # `conditional_clause` returns a list of DmlField (one per branch). Flatten
+        # so DmlRecord.fields is a flat tuple regardless of conditional nesting.
+        flat: list[DmlField] = []
+        for it in items:
+            if isinstance(it, list):
+                flat.extend(it)
+            else:
+                flat.append(it)  # type: ignore[arg-type]
+        return DmlRecord(fields=tuple(flat))
+
+    # ---- conditional grammar ------------------------------------------------
+
+    def cond_value_str(self, items: list[Token]) -> str:
+        return _unquote(str(items[0]))
+
+    def cond_value_num(self, items: list[Token]) -> int | float:
+        text = str(items[0])
+        if "." in text or "e" in text.lower():
+            return float(text)
+        return int(text)
+
+    def cond_expr(self, items: list[object]) -> DmlCondition:
+        return DmlCondition(column=str(items[0]), op="==", value=items[1])  # type: ignore[arg-type]
+
+    def conditional_field(self, items: list[object]) -> list[DmlField]:
+        # Pass through the list produced by `conditional_clause`. The alias is
+        # only here so the `field: ... | conditional_clause` alternative has a
+        # transformer hook (without one Lark wraps the result in a Tree).
+        result = items[0]
+        assert isinstance(result, list)
+        return result
+
+    def cond_elif(self, items: list[object]) -> tuple:
+        return (items[0], items[1], False)
+
+    def cond_else(self, items: list[object]) -> tuple:
+        return (None, items[0], True)
+
+    def conditional_clause(self, items: list[object]) -> list[DmlField]:
+        # items: [DmlCondition, head_field, *cond_more triples]
+        head_cond = items[0]
+        head_field = items[1]
+        more = items[2:]
+        branches: list[tuple] = [(head_cond, head_field, False)] + list(more)  # type: ignore[arg-type]
+
+        out: list[DmlField] = []
+        prior: list[DmlCondition] = []
+        for c, f, is_else in branches:
+            assert isinstance(f, DmlField)
+            if is_else:
+                out.append(dataclasses.replace(
+                    f, condition=None, excludes=tuple(prior), is_else=True,
+                ))
+            else:
+                assert isinstance(c, DmlCondition)
+                out.append(dataclasses.replace(f, condition=c))
+                prior.append(c)
+        return out
 
 
 def parse_dml(text: str) -> DmlRecord:

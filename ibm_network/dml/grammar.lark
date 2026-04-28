@@ -4,6 +4,21 @@ field: dml_type vector_suffix? CNAME field_default? ";"     -> scalar_field
      | "record" field+ "end" CNAME ";"                       -> nested_field
      | "record" "[" CNAME "]" field+ "end" CNAME ";"         -> nested_vector_field
      | "union" field+ "end" CNAME ";"                        -> union_field
+     | conditional_clause                                    -> conditional_field
+
+conditional_clause: "if" "(" cond_expr ")" branch_field cond_more*
+cond_more: "else" "if" "(" cond_expr ")" branch_field   -> cond_elif
+        | "else" branch_field                            -> cond_else
+// branch_field is field minus the conditional alternative — disallowing nested
+// conditionals here keeps Earley's parse unambiguous around `else` in TC-018.
+branch_field: dml_type vector_suffix? CNAME field_default? ";"     -> scalar_field
+            | "record" field+ "end" CNAME ";"                       -> nested_field
+            | "record" "[" CNAME "]" field+ "end" CNAME ";"         -> nested_vector_field
+            | "union" field+ "end" CNAME ";"                        -> union_field
+
+cond_expr: CNAME "==" cond_value
+cond_value: ESCAPED_STRING -> cond_value_str
+          | SIGNED_NUMBER  -> cond_value_num
 
 vector_suffix: "[" INT "]"     -> vector_fixed
              | "[" CNAME "]"   -> vector_var

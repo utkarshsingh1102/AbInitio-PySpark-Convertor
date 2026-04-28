@@ -76,6 +76,19 @@ class DmlNested:
 
 
 @dataclass(frozen=True)
+class DmlCondition:
+    """A single `column == value` test from an `if (...)` head (TC-017 / TC-018).
+
+    The convertor only supports the `==` form today; richer comparison ops can
+    plug in here without touching downstream codegen.
+    """
+
+    column: str
+    op: str  # "=="
+    value: str | int | float
+
+
+@dataclass(frozen=True)
 class DmlField:
     name: str
     type: DmlScalar | DmlNested
@@ -84,6 +97,13 @@ class DmlField:
     # supported; TC-015's runtime length-prefixed form will plug an `str` here
     # naming the discriminator field.
     vector_length: int | str | None = None
+    # Conditional-population metadata (TC-017 / TC-018):
+    #   condition  → branch is active when this DmlCondition holds
+    #   excludes   → branch is active when none of these conditions hold (else)
+    #   is_else    → marks the branch as the unconditional `else` tail
+    condition: DmlCondition | None = None
+    excludes: tuple[DmlCondition, ...] = ()
+    is_else: bool = False
 
 
 @dataclass(frozen=True)

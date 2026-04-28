@@ -656,6 +656,52 @@ def _sql_cast(scalar: DmlScalar) -> str | None:
     raise TypeError(f"unhandled DML scalar in cast: {scalar!r}")
 
 
+def format_read_chain(expr: str, indent: int = 4) -> str:
+    """Split a method-call chain into one call per line.
+
+    Splits only at top-level dots (depth == 0), so nested calls like
+    F.when(F.col("x") == F.lit(1), ...) are never broken mid-argument.
+
+        spark.read.option(...).csv(...)
+        .withColumn(...)
+        .select(...)
+
+    becomes:
+
+        (
+            spark.read
+            .option(...)
+            .csv(...)
+            .withColumn(...)
+            .select(...)
+        )
+    """
+    pad = " " * indent
+    segments: list[str] = []
+    depth = 0
+    start = 0
+    i = 0
+    while i < len(expr):
+        ch = expr[i]
+        if ch in "([":
+            depth += 1
+        elif ch in ")]":
+            depth -= 1
+        elif ch == "." and depth == 0 and i > start:
+            segments.append(expr[start:i])
+            start = i + 1  # skip the dot; we'll re-add it as a prefix
+            i += 1
+            continue
+        i += 1
+    segments.append(expr[start:])
+
+    if len(segments) <= 2:  # nothing to break up
+        return expr
+
+    lines = [pad + segments[0]] + [pad + "." + s for s in segments[1:]]
+    return "(\n" + "\n".join(lines) + "\n)"
+
+
 def _csv_options(delimiter: str | None) -> str:
     """Build a chain of `.option(...)` calls for a CSV read.
 

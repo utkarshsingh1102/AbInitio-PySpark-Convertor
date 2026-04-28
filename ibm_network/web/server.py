@@ -16,7 +16,10 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from ibm_network.codegen import synthesize
+from ibm_network.codegen.read_strategy import choose as choose_read_strategy
+from ibm_network.codegen.source_emitter import format_read_chain, render_source_read
 from ibm_network.dml.emitter import render_schema_from_text
+from ibm_network.dml.parser import parse_dml
 from ibm_network.ir.models import Graph
 from ibm_network.mapping.transform_expr import expr_to_pyspark, transform_block_to_select_args
 
@@ -38,17 +41,30 @@ def index() -> FileResponse:
 @app.post("/api/dml")
 def api_dml(req: TextRequest) -> dict:
     try:
+        record = parse_dml(req.text)
         struct_src = render_schema_from_text(req.text)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"DML parse error: {e}") from e
+
+    strategy = choose_read_strategy(record)
+    read_src = render_source_read(
+        strategy,
+        schema_var="schema",
+        input_path="<input_path>",
+        record=record,
+    )
+    read_fmt = format_read_chain(read_src)
+
     py_file = (
+        "from pyspark.sql import functions as F\n"
         "from pyspark.sql.types import (\n"
         "    StructType, StructField, DecimalType, IntegerType, LongType,\n"
         "    ShortType, ByteType, StringType, DateType, TimestampType,\n"
         ")\n\n"
-        f"schema = {struct_src}\n"
+        f"schema = {struct_src}\n\n"
+        f"df = {read_fmt}\n"
     )
-    return {"schema_source": struct_src, "py_file": py_file}
+    return {"schema_source": struct_src, "read_source": read_fmt, "py_file": py_file}
 
 
 @app.post("/api/transform")
