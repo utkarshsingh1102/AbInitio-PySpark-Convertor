@@ -147,7 +147,7 @@ class _DMLTransformer(Transformer):
         )
         return DmlField(name=name, type=ty, default=default, vector_length=vector_length)
 
-    def vector_fixed(self, items: list[Token]) -> "_VectorMark":
+    def vector_fixed(self, items: list[Token]) -> _VectorMark:
         return _VectorMark(length=int(items[0]))
 
     def field_default(self, items: list[object]) -> str | int | float:
