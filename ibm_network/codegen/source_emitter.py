@@ -26,6 +26,24 @@ from ibm_network.dml.format_map import to_spark_format
 from ibm_network.dml.type_map import spark_type_source
 
 
+def render_raw_schema_source(record: DmlRecord) -> str | None:
+    """Return a ``StructType([...])`` source string for the *read-time* schema,
+    or ``None`` when the read schema equals the output schema.
+
+    When ``_needs_inline_schema`` is true the CSV reader uses a schema that
+    differs from the final output schema (sentinel-numeric fields as StringType,
+    date/datetime as StringType, void placeholder columns, etc.).  Callers
+    should assign the returned source to a ``raw_schema`` variable and pass
+    ``raw_schema_var="raw_schema"`` to ``render_source_read``.
+    """
+    if not _needs_inline_schema(record):
+        return None
+    inline: list[str] = []
+    _emit_inline_schema(record.fields, inline, void_id=[0])
+    rows = ",\n    ".join(inline)
+    return f"StructType([\n    {rows},\n])"
+
+
 def render_source_read(
     strategy: ReadStrategy,
     *,
@@ -33,17 +51,19 @@ def render_source_read(
     input_path: str,
     delimiter: str | None = None,
     record: DmlRecord | None = None,
+    raw_schema_var: str = "raw_schema",
 ) -> str:
     """Return the Python expression that loads the source DataFrame.
 
     Args:
-        strategy:    chosen by `read_strategy.choose(record)`.
-        schema_var:  name of a `StructType` variable to pass as ``schema=...``,
-                     or None if the strategy doesn't use a schema.
-        input_path:  filesystem path to the input file.
-        delimiter:   field delimiter for delimited reads. ``None`` falls back to
-                     Spark's default. Newline is the row terminator and ignored.
-        record:      parsed DML; required for the substring/binary strategies.
+        strategy:       chosen by `read_strategy.choose(record)`.
+        schema_var:     name of the final ``StructType`` variable, or None.
+        input_path:     filesystem path to the input file.
+        delimiter:      field delimiter for delimited reads.
+        record:         parsed DML; required for substring/binary strategies.
+        raw_schema_var: name of the read-time schema variable emitted by
+                        ``render_raw_schema_source``; used when the read
+                        schema diverges from the output schema.
 
     Raises:
         NotImplementedError: for strategies that Phase 3 hasn't filled in yet.
@@ -52,7 +72,9 @@ def render_source_read(
         if schema_var is None:
             raise ValueError("CSV_DELIMITED requires a schema_var")
         if record is not None and _needs_inline_schema(record):
-            base = _render_csv_with_inline_schema(record, input_path, delimiter)
+            base = _render_csv_with_inline_schema(
+                record, input_path, delimiter, raw_schema_var
+            )
         else:
             opts = _csv_options(delimiter)
             base = f'spark.read{opts}.csv("{input_path}", schema={schema_var})'
@@ -152,7 +174,9 @@ def _needs_inline_schema(record: DmlRecord) -> bool:
 
       - voids (read for alignment, then dropped); or
       - date/datetime fields (read as String, then to_date/to_timestamp); or
-      - fixed-length vector fields (read as N flat columns, then F.array assembled).
+      - fixed-length vector fields (read as N flat columns, then F.array assembled); or
+      - numeric fields with a null sentinel (read as String so the raw token is
+        compared before parsing — Ab Initio's compare-before-parse semantics).
     """
     for f in record.fields:
         if f.condition is not None or f.is_else:
@@ -160,6 +184,8 @@ def _needs_inline_schema(record: DmlRecord) -> bool:
         if isinstance(f.type, (DmlVoid, DmlDate, DmlDatetime, DmlNested)):
             return True
         if f.vector_length is not None:
+            return True
+        if _is_numeric_with_sentinel(f.type):
             return True
     return False
 
@@ -289,6 +315,7 @@ def _default_literal(value: str | int | float) -> str:
     return str(value)
 
 
+
 def _render_temporal_conversions(record: DmlRecord) -> str:
     """For every Date / Datetime field in `record`, append a `.withColumn(...)`
     chain that parses the string column with the field's Spark format pattern.
@@ -313,12 +340,27 @@ def _render_temporal_conversions(record: DmlRecord) -> str:
     return "".join(parts)
 
 
-def _render_null_replacements(record: DmlRecord) -> str:
-    """For every field whose DML carries a `null("...")` indicator, append a
-    ``.withColumn(name, F.when(col == lit(sentinel), None).otherwise(col))`` step.
+def _is_numeric_with_sentinel(scalar) -> bool:  # type: ignore[no-untyped-def]
+    """True when a field is a numeric type AND carries a non-empty null sentinel.
 
-    Spark's CSV reader's global ``nullValue`` option only handles one sentinel;
-    real Ab Initio records have *per-field* sentinels (TC-006).
+    These fields must be read as StringType so that the raw token is compared
+    against the sentinel string before the value is parsed to a number — matching
+    Ab Initio's compare-before-parse semantics.
+    """
+    return (
+        isinstance(scalar, (DmlInteger, DmlReal, DmlDecimal))
+        and bool(getattr(scalar, "null_value", None))
+    )
+
+
+def _render_null_replacements(record: DmlRecord) -> str:
+    """For every field whose DML carries a ``null("...")`` indicator, append a
+    ``.withColumn(name, F.when(col == lit(sentinel), None).otherwise(col))``
+    step.  For numeric fields the column is still StringType at this point
+    (read as string so the raw token is compared); the cast to the target
+    numeric type is inlined into the ``.otherwise(...)`` expression so a
+    single ``.withColumn(...)`` both nullifies the sentinel and restores the
+    correct type.
     """
     parts: list[str] = []
     for f in _iter_leaves(record.fields):
@@ -327,55 +369,50 @@ def _render_null_replacements(record: DmlRecord) -> str:
             continue
         lit = _format_null_lit(sentinel, f.type)
         if lit is None:
-            # Sentinel can't be compared cleanly (e.g., empty-string sentinel on a
-            # numeric column). Spark's CSV reader already maps empty cells to null
-            # on typed schemas, so no extra step is needed here.
             continue
+        if _is_numeric_with_sentinel(f.type):
+            cast = _sql_cast(f.type)
+            otherwise = f'F.col("{f.name}").cast("{cast}")'
+        else:
+            otherwise = f'F.col("{f.name}")'
         parts.append(
             f'.withColumn("{f.name}", '
             f'F.when(F.col("{f.name}") == {lit}, None)'
-            f'.otherwise(F.col("{f.name}")))'
+            f'.otherwise({otherwise}))'
         )
     return "".join(parts)
 
 
 def _format_null_lit(sentinel: str, scalar: DmlScalar) -> str | None:
-    """Render a null sentinel as a PySpark `F.lit(...)` expression.
+    """Render a null sentinel as a PySpark ``F.lit(...)`` string expression.
 
-    Returns ``None`` when the sentinel cannot be safely compared against the
-    field's type — e.g., an empty-string sentinel on a numeric column would
-    force Spark to cast ``""`` to BIGINT and crash. The caller skips that
-    step entirely.
+    Numeric fields with a non-empty sentinel are read as StringType by
+    ``_emit_inline_schema`` (compare-before-parse), so the comparison is
+    always string-vs-string.  An empty-string sentinel on a numeric field
+    returns ``None`` — Spark's CSV reader already maps empty cells to null
+    for typed columns, so no explicit step is needed.
     """
-    is_numeric = isinstance(scalar, (DmlInteger, DmlReal, DmlDecimal))
-    if is_numeric:
-        if not sentinel:
-            return None
-        try:
-            float(sentinel)
-        except ValueError:
-            return None
-        return f"F.lit({sentinel})"
+    if not sentinel and isinstance(scalar, (DmlInteger, DmlReal, DmlDecimal)):
+        return None
     return f'F.lit("{sentinel}")'
 
 
 def _render_csv_with_inline_schema(
-    record: DmlRecord, input_path: str, delimiter: str | None
+    record: DmlRecord, input_path: str, delimiter: str | None,
+    raw_schema_var: str = "raw_schema",
 ) -> str:
-    """CSV read with an inline schema, used when the output schema diverges from
-    the read-time schema:
+    """CSV read where the read-time schema differs from the output schema.
 
-      - voids are read for positional alignment but selected out;
-      - date/datetime fields are read as StringType because Spark CSV's
-        ``dateFormat`` option is global per read; later, ``_render_temporal_conversions``
-        appends ``.withColumn(...)`` calls that parse them with the right pattern.
+    References ``raw_schema_var`` (a variable name defined in the caller's scope
+    by ``render_raw_schema_source``) via ``.schema(...).csv(path)`` so the
+    schema definition is not embedded inline in the call chain.
+
+    Appends ``.select(keep)`` to drop positional void placeholder columns when
+    the record contains void fields.
     """
     opts = _csv_options(delimiter)
-    inline: list[str] = []
-    _emit_inline_schema(record.fields, inline, void_id=[0])
-    schema_inline = "StructType([" + ", ".join(inline) + "])"
+    base = f'spark.read{opts}.schema({raw_schema_var}).csv("{input_path}")'
     has_voids = any(isinstance(f.type, DmlVoid) for f in record.fields)
-    base = f'spark.read{opts}.csv("{input_path}", schema={schema_inline})'
     if has_voids:
         keep = [
             f'"{f.name}_{j}"' if isinstance(f.vector_length, int) else f'"{f.name}"'
@@ -428,7 +465,9 @@ def _emit_inline_schema(fields, inline: list[str], *, void_id: list[int],
                 inline.append(f'StructField("{f.name}_{j2}", {elem_src}, True)')
             i += 1
             continue
-        if isinstance(t, (DmlDate, DmlDatetime)):
+        if isinstance(t, (DmlDate, DmlDatetime)) or _is_numeric_with_sentinel(t):
+            # Keep as StringType so the raw token can be compared against the
+            # null sentinel (or parsed with to_date/to_timestamp) post-read.
             inline.append(f'StructField("{f.name}", StringType(), True)')
         else:
             inline.append(f'StructField("{f.name}", {spark_type_source(t)}, True)')
@@ -488,6 +527,10 @@ def _apply_inline_cast(col_expr: str, field) -> str:  # type: ignore[no-untyped-
         spark_fmt = to_spark_format(t.format)
         return f'F.to_timestamp({col_expr}, "{spark_fmt}").alias("{field.name}")'
     if isinstance(t, DmlString):
+        return f'{col_expr}.alias("{field.name}")'
+    if _is_numeric_with_sentinel(t):
+        # Keep as string so _render_null_replacements can compare the raw token.
+        # _render_post_null_casts will cast to the target type afterward.
         return f'{col_expr}.alias("{field.name}")'
     cast = _sql_cast(t)
     if cast is None:
@@ -550,9 +593,14 @@ def _render_text_split_regex(record: DmlRecord, input_path: str) -> str:
         assert not isinstance(t, DmlNested)
         cur = _format_offset_expr(constant, sym_terms)
         idx = cur if not sym_terms else f"int({cur})"
-        cast = _sql_cast(t)
         e = f"element_at(_p, {idx})"
-        sql = f"cast({e} as {cast})" if cast else e
+        if _is_numeric_with_sentinel(t):
+            # Keep as string; _render_null_replacements compares the raw token,
+            # then _render_post_null_casts casts to the target type.
+            sql = e
+        else:
+            cast = _sql_cast(t)
+            sql = f"cast({e} as {cast})" if cast else e
         parts.append(f'.withColumn("{f.name}", F.expr("{sql}"))')
         constant += 1
 
@@ -602,7 +650,12 @@ def _render_text_substring(record: DmlRecord, input_path: str) -> str:
         if not isinstance(f.type, DmlVoid):
             cast_to = _sql_cast(f.type)
             expr = f'F.substring("value", {offset}, {width})'
-            if cast_to is not None:
+            if _is_numeric_with_sentinel(f.type):
+                # Fixed-width fields are space-padded; trim before the null
+                # comparison so "-1   " matches sentinel "-1".  The cast is
+                # deferred to _render_post_null_casts after null replacement.
+                expr = f'F.trim({expr})'
+            elif cast_to is not None:
                 expr = f'{expr}.cast("{cast_to}")'
             parts.append(f'{expr}.alias("{f.name}")')
         offset += width
@@ -656,50 +709,113 @@ def _sql_cast(scalar: DmlScalar) -> str | None:
     raise TypeError(f"unhandled DML scalar in cast: {scalar!r}")
 
 
-def format_read_chain(expr: str, indent: int = 4) -> str:
-    """Split a method-call chain into one call per line.
+def format_read_chain(expr: str) -> str:
+    """Format a Spark read chain with one method per line.
 
-    Splits only at top-level dots (depth == 0), so nested calls like
-    F.when(F.col("x") == F.lit(1), ...) are never broken mid-argument.
-
-        spark.read.option(...).csv(...)
-        .withColumn(...)
-        .select(...)
-
-    becomes:
+    ``spark.read`` stays on the first line (4-space indent); all subsequent
+    method calls are indented 8 spaces.  ``.withColumn(...)`` calls whose
+    second argument begins with ``F.when(...)`` are split across three lines::
 
         (
             spark.read
-            .option(...)
-            .csv(...)
-            .withColumn(...)
-            .select(...)
+                .option("header", "false")
+                .schema(raw_schema)
+                .csv("<path>")
+                .withColumn("discount",
+                    F.when(F.col("discount") == F.lit("-1"), None)
+                     .otherwise(F.col("discount").cast("decimal(10,2)")))
         )
     """
-    pad = " " * indent
+    segments = _split_chain_dots(expr)
+    if len(segments) <= 2:
+        return expr
+
+    # Keep "spark.read" on one line
+    if len(segments) >= 2 and segments[0] == "spark" and segments[1] == "read":
+        first = "spark.read"
+        rest = segments[2:]
+    else:
+        first = segments[0]
+        rest = segments[1:]
+
+    lines = ["    " + first]
+    for seg in rest:
+        lines.append(_format_chain_segment(seg))
+    return "(\n" + "\n".join(lines) + "\n)"
+
+
+def _split_chain_dots(expr: str) -> list[str]:
+    """Split ``expr`` at every top-level dot (paren/bracket depth == 0)."""
     segments: list[str] = []
     depth = 0
     start = 0
-    i = 0
-    while i < len(expr):
-        ch = expr[i]
+    for i, ch in enumerate(expr):
         if ch in "([":
             depth += 1
         elif ch in ")]":
             depth -= 1
         elif ch == "." and depth == 0 and i > start:
             segments.append(expr[start:i])
-            start = i + 1  # skip the dot; we'll re-add it as a prefix
-            i += 1
-            continue
-        i += 1
+            start = i + 1
     segments.append(expr[start:])
+    return segments
 
-    if len(segments) <= 2:  # nothing to break up
-        return expr
 
-    lines = [pad + segments[0]] + [pad + "." + s for s in segments[1:]]
-    return "(\n" + "\n".join(lines) + "\n)"
+def _format_chain_segment(seg: str) -> str:
+    """Format a single chain segment at 8-space indent with a leading dot."""
+    if seg.startswith("withColumn("):
+        return _format_withcolumn(seg)
+    return "        ." + seg
+
+
+def _format_withcolumn(seg: str) -> str:
+    """Format ``.withColumn("name", expr)`` — multi-line when expr is F.when(...)."""
+    # Strip "withColumn(" prefix and the matching trailing ")"
+    inner = seg[len("withColumn("):-1]
+
+    col_name, expr = _split_first_comma(inner)
+    expr = expr.strip()
+
+    if "F.when(" not in expr:
+        return f"        .withColumn({inner})"
+
+    otherwise_idx = _find_dot_otherwise(expr)
+    if otherwise_idx == -1:
+        return f"        .withColumn({col_name},\n            {expr})"
+
+    when_part = expr[:otherwise_idx]
+    otherwise_part = expr[otherwise_idx:]
+    return (
+        f"        .withColumn({col_name},\n"
+        f"            {when_part}\n"
+        f"             {otherwise_part})"
+    )
+
+
+def _split_first_comma(s: str) -> tuple[str, str]:
+    """Split ``s`` at the first top-level comma; return (before, after)."""
+    depth = 0
+    for i, ch in enumerate(s):
+        if ch in "([":
+            depth += 1
+        elif ch in ")]":
+            depth -= 1
+        elif ch == "," and depth == 0:
+            return s[:i], s[i + 1:]
+    return s, ""
+
+
+def _find_dot_otherwise(expr: str) -> int:
+    """Return the index of the first top-level ``.otherwise(`` in ``expr``, or -1."""
+    depth = 0
+    for i, ch in enumerate(expr):
+        if ch in "([":
+            depth += 1
+        elif ch in ")]":
+            depth -= 1
+        elif ch == "." and depth == 0 and expr[i:].startswith(".otherwise("):
+            return i
+    return -1
 
 
 def _csv_options(delimiter: str | None) -> str:

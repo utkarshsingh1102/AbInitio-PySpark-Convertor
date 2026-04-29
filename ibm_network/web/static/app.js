@@ -86,7 +86,7 @@ document.addEventListener("click", async (e) => {
     if (action === "convert-dml") {
       const text = document.getElementById("dml-input").value;
       const data = await postJson("/api/dml", { text });
-      const display = "# Schema\nschema = " + data.schema_source + "\n\n# Read\ndf = " + data.read_source;
+      const display = "# Schema\nschema = " + data.schema_source + "\n\n# Read\n" + "df = " + data.read_source;
       showOutput("dml-output", display);
       setHidden("dml-py", data.py_file);
     } else if (action === "convert-transform") {

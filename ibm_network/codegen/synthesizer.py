@@ -18,7 +18,7 @@ from ibm_network.codegen.llm_client import LLMClient, LLMUnavailableError
 from ibm_network.codegen.prompt import POLISH_SYSTEM, build_polish_prompt
 from ibm_network.codegen.read_strategy import ReadStrategy
 from ibm_network.codegen.read_strategy import choose as choose_read_strategy
-from ibm_network.codegen.source_emitter import render_source_read
+from ibm_network.codegen.source_emitter import render_raw_schema_source, render_source_read
 from ibm_network.dml.ast import (
     DmlDecimal,
     DmlNested,
@@ -82,9 +82,8 @@ def synthesize(
     for comp in ordered:
         upstream_edges = graph.upstream(comp.id)
         if comp.id in sources:
-            schema_var, read_line, src_notes = _emit_source(comp)
-            if schema_var is not None:
-                schemas.append(schema_var)
+            schema_entries, read_line, src_notes = _emit_source(comp)
+            schemas.extend(schema_entries)
             reads.append(read_line)
             notes.extend(src_notes)
             continue
@@ -127,13 +126,17 @@ def synthesize(
     return GeneratedScript(code=code, notes=notes, final_var=final_var)
 
 
-def _emit_source(comp: Component) -> tuple[tuple[str, str] | None, str, list[str]]:
+def _emit_source(
+    comp: Component,
+) -> tuple[list[tuple[str, str]], str, list[str]]:
     """Build the read line for a source component.
 
-    Parses the component's output DML (if any), asks `read_strategy.choose` for
-    a strategy, and routes through `source_emitter.render_source_read` for the
-    actual code text. Schema generation and the read line are decoupled so
-    Phase 3 can route fixed-width / binary records to non-CSV strategies.
+    Returns a list of ``(var_name, source_text)`` schema entries — always at
+    most one entry named ``schema_<id>``.  When the record needs a special
+    read-time schema (sentinel numerics as StringType, date fields, voids, etc.)
+    that schema is emitted under ``schema_<id>`` directly; the final output
+    schema is not emitted separately.  The read line is the full
+    ``df_<id> = ...`` assignment.
     """
     var = df_var(comp.id)
     input_path = comp.params.get("url") or comp.params.get("input_path") or f"<TODO:{comp.id}>"
@@ -159,11 +162,22 @@ def _emit_source(comp: Component) -> tuple[tuple[str, str] | None, str, list[str
                 notes.append(zoned_decimal_manual(comp.id, f.name).format())
 
     strategy = choose_read_strategy(record)
-    schema_entry: tuple[str, str] | None = None
+    schema_entries: list[tuple[str, str]] = []
     schema_var: str | None = None
-    if record is not None and strategy is ReadStrategy.CSV_DELIMITED:
-        schema_var = f"schema_{_safe_id(comp.id)}"
-        schema_entry = (schema_var, render_schema(record))
+
+    if record is not None:
+        raw_src = render_raw_schema_source(record)
+        if raw_src is not None:
+            # Read-time schema differs from output schema — emit it as the one
+            # schema variable so the read chain references schema_<id> directly.
+            schema_var = f"schema_{_safe_id(comp.id)}"
+            schema_entries.append((schema_var, raw_src))
+        elif strategy is ReadStrategy.CSV_DELIMITED:
+            schema_var = f"schema_{_safe_id(comp.id)}"
+            schema_entries.append((schema_var, render_schema(record)))
+
+    # schema_var doubles as raw_schema_var — there is only one schema variable.
+    raw_schema_var = schema_var or "schema"
 
     delimiter = _record_delimiter(record) if record is not None else None
     read_body = render_source_read(
@@ -172,8 +186,9 @@ def _emit_source(comp: Component) -> tuple[tuple[str, str] | None, str, list[str
         input_path=input_path,
         delimiter=delimiter,
         record=record,
+        raw_schema_var=raw_schema_var,
     )
-    return schema_entry, f"{var} = {read_body}", notes
+    return schema_entries, f"{var} = {read_body}", notes
 
 
 def _record_delimiter(record: DmlRecord) -> str | None:

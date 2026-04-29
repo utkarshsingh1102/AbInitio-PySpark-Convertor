@@ -163,18 +163,39 @@ end;
 ```
 **Expected:**
 ```python
-schema = StructType([
-    StructField("customer_id", LongType(), True),
+# Read everything as strings so null-sentinel comparisons happen on RAW tokens
+# (matches Ab Initio's pre-parse semantics), then cast to target types.
+raw_schema = StructType([
+    StructField("customer_id", StringType(), True),
     StructField("middle_name", StringType(), True),
-    StructField("discount", DecimalType(10, 2), True),
-    StructField("status", StringType(), True),
+    StructField("discount",    StringType(), True),
+    StructField("status",      StringType(), True),
 ])
-# Apply per-field null replacement:
-df = (spark.read.csv(path, schema=schema, nullValue="")  # global null
-    .withColumn("middle_name", when(col("middle_name") == "NULL", None).otherwise(col("middle_name")))
-    .withColumn("discount", when(col("discount") == -1, None).otherwise(col("discount"))))
+
+df = (spark.read
+    .option("header", "false")
+    .schema(raw_schema)
+    .csv(path)
+    .withColumn("customer_id",
+        when(col("customer_id") == "", None)
+         .otherwise(col("customer_id")).cast(LongType()))
+    .withColumn("middle_name",
+        when(col("middle_name") == "NULL", None)
+         .otherwise(col("middle_name")))
+    .withColumn("discount",
+        when(col("discount") == "-1", None)
+         .otherwise(col("discount")).cast(DecimalType(10, 2)))
+)
+
+# Final schema (post-transformation):
+# StructType([
+#     StructField("customer_id", LongType(),         True),
+#     StructField("middle_name", StringType(),       True),
+#     StructField("discount",    DecimalType(10, 2), True),
+#     StructField("status",      StringType(),       True),
+# ])
 ```
-**Notes:** Each field can have its own null sentinel. CSV reader's `nullValue` only handles one — others need post-read transformation.
+**Notes:** Ab Initio null sentinels are RAW STRING comparisons applied before parsing. Comparing post-parse (e.g. `col("discount") == -1`) collapses `-1`, `-1.00`, `-01` into the same value, nulling fields Ab Initio would have kept. The CSV reader's `nullValue` only takes one global sentinel; per-field sentinels require read-as-string → compare → cast.
 
 ---
 
@@ -191,29 +212,43 @@ end;
 ```
 **Expected:**
 ```python
-# Read as strings, then convert:
-StructType([
-    StructField("txn_id", LongType(), True),
-    StructField("txn_date", DateType(), True),
-    StructField("created_ts", TimestampType(), True),
-    StructField("updated_ts", TimestampType(), True),
+# Read date/timestamp columns as STRINGS — Spark CSV has only one global
+# dateFormat and one timestampFormat option, but the DML uses two different
+# timestamp formats. String-then-convert is required.
+read_schema = StructType([
+    StructField("txn_id",     LongType(),   True),
+    StructField("txn_date",   StringType(), True),
+    StructField("created_ts", StringType(), True),
+    StructField("updated_ts", StringType(), True),
 ])
-# Format mapping:
-# YYYY-MM-DD -> yyyy-MM-dd
-# YYYYMMDDHH24MISS -> yyyyMMddHHmmss
-# HH24:MI:SS -> HH:mm:ss
-df = df.withColumn("txn_date", to_date("txn_date", "yyyy-MM-dd")) \
-       .withColumn("created_ts", to_timestamp("created_ts", "yyyyMMddHHmmss")) \
-       .withColumn("updated_ts", to_timestamp("updated_ts", "yyyy-MM-dd HH:mm:ss"))
+
+df = (spark.read
+    .option("header", "false")
+    .schema(read_schema)
+    .csv(path)
+    .withColumn("txn_date",   to_date("txn_date", "yyyy-MM-dd"))
+    .withColumn("created_ts", to_timestamp("created_ts", "yyyyMMddHHmmss"))
+    .withColumn("updated_ts", to_timestamp("updated_ts", "yyyy-MM-dd HH:mm:ss"))
+)
+
+# Final schema (post-transformation):
+# StructType([
+#     StructField("txn_id",     LongType(),      True),
+#     StructField("txn_date",   DateType(),      True),
+#     StructField("created_ts", TimestampType(), True),
+#     StructField("updated_ts", TimestampType(), True),
+# ])
 ```
-**Notes:** Format string conversion table:
+**Notes:** Format string conversion table (Ab Initio → Spark/Java SimpleDateFormat):
 - `YYYY` → `yyyy`
-- `MM` → `MM` (same)
-- `DD` → `dd`
-- `HH24` → `HH`
-- `HH12` → `hh`
-- `MI` → `mm`
-- `SS` → `ss`
+- `MM`   → `MM` (month)
+- `DD`   → `dd`
+- `HH24` → `HH` (24-hour)
+- `HH12` → `hh` (12-hour)
+- `MI`   → `mm` (minute — note the clash with month, hence the case sensitivity)
+- `SS`   → `ss`
+
+The read schema and the final post-transform schema are deliberately different. Tests should validate both: read produces the string schema, post-transform produces the typed schema.
 
 ---
 
@@ -231,14 +266,30 @@ end;
 **Expected:**
 ```python
 schema = StructType([
-    StructField("id", LongType(), True),
-    StructField("name", StringType(), True),
-    StructField("qty", LongType(), True),
+    StructField("id",     LongType(),   True),
+    StructField("name",   StringType(), True),
+    StructField("qty",    LongType(),   True),
     StructField("region", StringType(), True),
 ])
-df = df.fillna({"name": "UNKNOWN", "qty": 0, "region": "GLOBAL"})
+
+df = (spark.read
+    .option("header", "false")
+    .schema(schema)
+    .csv(path)
+    # Numeric columns: empty CSV fields parse to NULL → fillna fires correctly
+    .fillna({"qty": 0})
+    # String columns: empty CSV fields parse to "" (NOT NULL) by default —
+    # fillna won't fire. Handle both NULL and "" explicitly.
+    .withColumn("name",
+        when(col("name").isNull() | (col("name") == ""), "UNKNOWN")
+         .otherwise(col("name")))
+    .withColumn("region",
+        when(col("region").isNull() | (col("region") == ""), "GLOBAL")
+         .otherwise(col("region")))
+)
 ```
-**Notes:** `fillna` with a dict is the cleanest mapping.
+**Notes:** Ab Initio defaults fire on missing or empty fields. Spark `fillna` only handles NULL. For string columns, empty CSV fields land as `""`, not NULL — so `fillna` silently misses them. Numeric columns parse empty as NULL, so `fillna` works there.
+Alternative: set `option("nullValue", "")` globally, then `fillna` works for strings too — but this collides with TC-006 when fields need different sentinels. Pick a converter-wide policy and document it.
 
 ---
 
@@ -255,18 +306,42 @@ end;
 ```
 **Expected:**
 ```python
-StructType([
-    StructField("student_id", LongType(), True),
-    StructField("subject_scores", ArrayType(LongType()), True),
-    StructField("favorite_subjects", ArrayType(StringType()), True),
-    StructField("name", StringType(), True),
+# CSV is positional. Read all 10 fields flat (1 student_id + 5 scores + 3 subjects + 1 name),
+# then collapse the runs into arrays.
+read_schema = StructType([
+    StructField("student_id", LongType(),   True),
+    StructField("score_0",    LongType(),   True),
+    StructField("score_1",    LongType(),   True),
+    StructField("score_2",    LongType(),   True),
+    StructField("score_3",    LongType(),   True),
+    StructField("score_4",    LongType(),   True),
+    StructField("subj_0",     StringType(), True),
+    StructField("subj_1",     StringType(), True),
+    StructField("subj_2",     StringType(), True),
+    StructField("name",       StringType(), True),
 ])
-# Read flat 9 columns (1 + 5 + 3 + name), then group:
-df = df.withColumn("subject_scores", array("score_0","score_1","score_2","score_3","score_4")) \
-       .withColumn("favorite_subjects", array("subj_0","subj_1","subj_2")) \
-       .drop("score_0","score_1","score_2","score_3","score_4","subj_0","subj_1","subj_2")
+
+df = (spark.read
+    .option("header", "false")
+    .schema(read_schema)
+    .csv(path)
+    .withColumn("subject_scores",
+        array("score_0", "score_1", "score_2", "score_3", "score_4"))
+    .withColumn("favorite_subjects",
+        array("subj_0", "subj_1", "subj_2"))
+    .drop("score_0", "score_1", "score_2", "score_3", "score_4",
+          "subj_0", "subj_1", "subj_2")
+    .select("student_id", "subject_scores", "favorite_subjects", "name"))
+
+# Final schema (post-transformation):
+# StructType([
+#     StructField("student_id",        LongType(),              True),
+#     StructField("subject_scores",    ArrayType(LongType()),   True),
+#     StructField("favorite_subjects", ArrayType(StringType()), True),
+#     StructField("name",              StringType(),            True),
+# ])
 ```
-**Notes:** CSV is positional. Read fields as flat columns first, then collapse into arrays.
+**Notes:** CSV is positional. Read fields as flat columns first, then collapse into arrays. The read schema has 10 columns; the output schema has 4. Tests should validate both.
 
 ---
 
@@ -284,19 +359,30 @@ end;
 ```
 **Expected:**
 - Flag this as **not directly supported** by `spark.read.csv` (it accepts only one delimiter).
-- Strategy: read whole line as text, split on regex `[|;]`, or use a UDF.
+- Strategy: read whole line as text, split on regex `[|;]`, then cast.
 ```python
-df = spark.read.text(path) \
-    .select(split(col("value"), r"[|;\n]").alias("parts")) \
+# spark.read.text already strips the trailing \n per row, so the split
+# regex only needs to cover the in-record delimiters | and ;.
+df = (spark.read.text(path)
+    .select(split(col("value"), r"[|;]").alias("parts"))
     .select(
         col("parts")[0].cast("long").alias("account_id"),
         col("parts")[1].alias("account_holder"),
         col("parts")[2].cast("decimal(8,2)").alias("balance"),
         to_date(col("parts")[3], "yyyy-MM-dd").alias("opened_date"),
         col("parts")[4].alias("branch"),
-    )
+    ))
+
+# Final schema:
+# StructType([
+#     StructField("account_id",     LongType(),        True),
+#     StructField("account_holder", StringType(),      True),
+#     StructField("balance",        DecimalType(8, 2), True),
+#     StructField("opened_date",    DateType(),        True),
+#     StructField("branch",         StringType(),      True),
+# ])
 ```
-**Notes:** Real Ab Initio jobs sometimes mix `|` and `;` — converter should detect and handle.
+**Notes:** Real Ab Initio jobs sometimes mix `|` and `;` — converter should detect and handle. Caution: if any field can legitimately contain `|` or `;` (e.g. inside `account_holder`), a regex split is unsafe. In that case, walk delimiters in order with a position-tracking parser.
 
 ---
 
@@ -338,15 +424,33 @@ end;
 ```
 **Expected:**
 ```python
-StructType([
-    StructField("txn_id", LongType(), True),
-    StructField("signed_amount", DecimalType(10, 2), True),
-    StructField("qty", LongType(), True),
-    StructField("currency", StringType(), True),
+# qty has a raw-string null sentinel "0" — handle pre-parse like TC-006.
+raw_schema = StructType([
+    StructField("txn_id",        StringType(), True),
+    StructField("signed_amount", StringType(), True),
+    StructField("qty",           StringType(), True),
+    StructField("currency",      StringType(), True),
 ])
-df = df.withColumn("qty", when(col("qty") == 0, None).otherwise(col("qty")))
+
+df = (spark.read
+    .option("header", "false")
+    .schema(raw_schema)
+    .csv(path)
+    .withColumn("txn_id",        col("txn_id").cast(LongType()))
+    .withColumn("signed_amount", col("signed_amount").cast(DecimalType(10, 2)))
+    .withColumn("qty",
+        when(col("qty") == "0", None)
+         .otherwise(col("qty")).cast(LongType())))
+
+# Final schema (post-transformation):
+# StructType([
+#     StructField("txn_id",        LongType(),         True),
+#     StructField("signed_amount", DecimalType(10, 2), True),
+#     StructField("qty",           LongType(),         True),
+#     StructField("currency",      StringType(),       True),
+# ])
 ```
-**Notes:** Decimal in DML is signed by default; just confirm Spark casts negatives correctly.
+**Notes:** Decimal in DML is signed by default; just confirm Spark casts negatives correctly. The `null("0")` sentinel must compare against the raw token — comparing post-parse (`col("qty") == 0`) would also null `00`, `000`, `0000` etc., which Ab Initio would NOT null. Same root cause as TC-006.
 
 ---
 
@@ -370,23 +474,39 @@ end;
 ```
 **Expected:**
 ```python
-StructType([
-    StructField("customer_id", LongType(), True),
-    StructField("name", StringType(), True),
-    StructField("address", StructType([
-        StructField("street", StringType(), True),
-        StructField("city", StringType(), True),
-        StructField("state", StringType(), True),
-        StructField("zip", StringType(), True),
-    ]), True),
-    StructField("phone", StringType(), True),
+# CSV is flat — read with a flat schema, then build the struct.
+read_schema = StructType([
+    StructField("customer_id", LongType(),   True),
+    StructField("name",        StringType(), True),
+    StructField("street",      StringType(), True),
+    StructField("city",        StringType(), True),
+    StructField("state",       StringType(), True),
+    StructField("zip",         StringType(), True),
+    StructField("phone",       StringType(), True),
 ])
-# Read flat, then build struct:
-df = df.withColumn("address", struct("street", "city", "state", "zip")) \
-       .drop("street", "city", "state", "zip") \
-       .select("customer_id", "name", "address", "phone")
+
+df = (spark.read
+    .option("header", "false")
+    .schema(read_schema)
+    .csv(path)
+    .withColumn("address", struct("street", "city", "state", "zip"))
+    .drop("street", "city", "state", "zip")
+    .select("customer_id", "name", "address", "phone"))
+
+# Final schema (post-transformation):
+# StructType([
+#     StructField("customer_id", LongType(),   True),
+#     StructField("name",        StringType(), True),
+#     StructField("address", StructType([
+#         StructField("street", StringType(), True),
+#         StructField("city",   StringType(), True),
+#         StructField("state",  StringType(), True),
+#         StructField("zip",    StringType(), True),
+#     ]), True),
+#     StructField("phone",       StringType(), True),
+# ])
 ```
-**Notes:** CSV is flat — converter must read flat then nest.
+**Notes:** Two distinct schemas: flat read schema, nested output schema. Both must be validated.
 
 ---
 
@@ -411,22 +531,42 @@ end;
 ```
 **Expected:**
 ```python
-StructType([
-    StructField("id", LongType(), True),
-    StructField("customer", StructType([
-        StructField("name", StringType(), True),
-        StructField("address", StructType([
-            StructField("street", StringType(), True),
-            StructField("location", StructType([
-                StructField("city", StringType(), True),
-                StructField("country", StringType(), True),
-            ]), True),
-        ]), True),
-    ]), True),
-    StructField("status", StringType(), True),
+# Read flat (id, name, street, city, country, status), then build structs bottom-up.
+read_schema = StructType([
+    StructField("id",      LongType(),   True),
+    StructField("name",    StringType(), True),
+    StructField("street",  StringType(), True),
+    StructField("city",    StringType(), True),
+    StructField("country", StringType(), True),
+    StructField("status",  StringType(), True),
 ])
+
+df = (spark.read
+    .option("header", "false")
+    .schema(read_schema)
+    .csv(path)
+    .withColumn("location", struct("city", "country"))
+    .withColumn("address",  struct("street", "location"))
+    .withColumn("customer", struct("name", "address"))
+    .select("id", "customer", "status"))
+
+# Final schema (post-transformation):
+# StructType([
+#     StructField("id", LongType(), True),
+#     StructField("customer", StructType([
+#         StructField("name", StringType(), True),
+#         StructField("address", StructType([
+#             StructField("street", StringType(), True),
+#             StructField("location", StructType([
+#                 StructField("city",    StringType(), True),
+#                 StructField("country", StringType(), True),
+#             ]), True),
+#         ]), True),
+#     ]), True),
+#     StructField("status", StringType(), True),
+# ])
 ```
-**Notes:** Tests recursive descent in the parser. Build structs bottom-up.
+**Notes:** Tests recursive descent in the parser. Build structs bottom-up — innermost first.
 
 ---
 
@@ -463,7 +603,7 @@ df = (df
     .withColumn("order_status", expr("element_at(p, 3 + 2*item_count)"))
     .drop("p"))
 ```
-**Notes:** Hardest part is positional slicing with a runtime length.
+**Notes:** Hardest part is positional slicing with a runtime length. `slice` and `element_at` are 1-indexed in Spark SQL; `col("p")[N]` is 0-indexed.
 
 ---
 
@@ -710,13 +850,21 @@ record
     string("\n") status;
 end;
 ```
-**Expected:** Same as a clean version — TC-001-style schema with `balance` as `DecimalType(10,2)`.
-**Notes:** Lexer must strip `//`, `/* */`, and tolerate arbitrary whitespace/tabs.
+**Expected:**
+```python
+StructType([
+    StructField("customer_id", LongType(),         True),
+    StructField("name",        StringType(),       True),
+    StructField("balance",     DecimalType(10, 2), True),
+    StructField("status",      StringType(),       True),
+])
+```
+**Notes:** Lexer must strip `//`, `/* */`, and tolerate arbitrary whitespace/tabs. The parsed schema should be identical to a clean version of the same DML — comments and whitespace contribute zero fields.
 
 ---
 
 ### TC-024: EBCDIC encoding hint
-**Category:** Charset
+**Category:** Charset, mainframe binary types
 **DML:**
 ```
 record
@@ -727,16 +875,57 @@ end;
 ```
 **Expected:**
 ```python
-# Read raw bytes, decode EBCDIC explicitly:
+# DO NOT decode the entire record as EBCDIC up-front. Packed-decimal bytes
+# are BINARY (not Cp037 code points) — codepage translation will mangle them.
+# Slice raw bytes first, decode text portions separately, decode packed
+# portions with byte-level UDFs.
+
+# Byte layout for packed_decimal(N): ceil((N+1)/2) bytes.
+# packed_decimal(5) → ceil(6/2) = 3 bytes.
+#
+# Offsets:
+#   emp_id:    bytes  0..10  (10 bytes, EBCDIC text)
+#   emp_name:  bytes 10..40  (30 bytes, EBCDIC text)
+#   age:       bytes 40..43  (3 bytes, packed BCD)
+
+@udf(returnType=StringType())
+def ebcdic_slice(content: bytes, start: int, length: int) -> str:
+    return content[start:start+length].decode("cp037")
+
+@udf(returnType=LongType())
+def unpack_decimal(content: bytes, start: int, length: int) -> int:
+    """Decode packed BCD. Each byte holds 2 nibbles (digits 0-9).
+    Last nibble is sign: C/F = positive, D = negative."""
+    chunk = content[start:start+length]
+    digits = []
+    for b in chunk[:-1]:
+        digits.append(b >> 4)
+        digits.append(b & 0x0F)
+    last = chunk[-1]
+    digits.append(last >> 4)
+    sign_nibble = last & 0x0F
+    sign = -1 if sign_nibble == 0x0D else 1
+    return sign * int("".join(str(d) for d in digits))
+
 df = (spark.read.format("binaryFile").load(path)
-    .select(decode("content", "Cp037").alias("text"))  # Cp037 = US EBCDIC
-    .select(
-        substring("text", 1, 10).alias("emp_id"),
-        substring("text", 11, 30).alias("emp_name"),
-        # packed_decimal needs UDF
-    ))
+    .withColumn("emp_id",   ebcdic_slice("content", lit(0),  lit(10)))
+    .withColumn("emp_name", ebcdic_slice("content", lit(10), lit(30)))
+    .withColumn("age",      unpack_decimal("content", lit(40), lit(3)))
+    .drop("content", "path", "modificationTime", "length"))
+
+# Final schema:
+# StructType([
+#     StructField("emp_id",   StringType(), True),
+#     StructField("emp_name", StringType(), True),
+#     StructField("age",      LongType(),   True),
+# ])
 ```
-**Notes:** Flag for review. Charset detection is environment-specific.
+**Notes:** Flag as MANUAL_REVIEW. Several environment-specific details require human verification:
+- **Sign nibble convention** — most shops use `C`/`D`/`F` (signed/unsigned, IBM standard); some use `A`/`B`/`E`.
+- **EBCDIC variant** — Cp037 (US), Cp1140 (US with €), Cp500 (international). Wrong choice mangles text.
+- **`binaryFile` reader** loads each file as one row. For multi-record files (most mainframe extracts) you also need a record-length splitter — typically a custom Hadoop InputFormat or a fixed-record-length reader. Add a TC for this if it's in scope.
+
+Storage formula reminder: `packed_decimal(N)` occupies `ceil((N+1)/2)` bytes, with N digits + 1 sign nibble. The UDF works for both odd and even N (even N gets a leading zero nibble that's harmless to the integer value).
 
 ---
 
@@ -776,6 +965,8 @@ end;
 
 **Notes:** If TC-001 through TC-024 pass and TC-025 passes, the converter handles ~95% of real-world DML.
 
+⚠ **Structural caveat:** The conditional `if (txn_type == 2) … end refund_details` produces rows with **different field counts** depending on `txn_type`. `spark.read.csv(schema=…)` can't tolerate variable-width rows — read with `spark.read.text` and parse manually, branching on `txn_type` to slice the trailing fields. This is meaningfully harder than TC-017, where conditional branches had fixed widths within a uniform schema.
+
 ---
 
 ## Test Harness Suggestion
@@ -797,9 +988,9 @@ tests/
 ```
 
 For each test, assert:
-1. **Schema equality** — generated `StructType` matches expected JSON
-2. **Read correctness** — running generated PySpark on `sample_data.csv` produces `expected_output.json`
-3. **Warnings** — for hard cases (TC-019, TC-020, TC-024), assert a warning was emitted
+1. **Schema equality** — generated `StructType` matches expected JSON. For tests with distinct read and output schemas (TC-006, TC-007, TC-009, TC-012, TC-013, TC-014), assert both.
+2. **Read correctness** — running generated PySpark on `sample_data.csv` produces `expected_output.json`. Sample data should include null-sentinel edge cases (e.g. `-1` vs `-1.00` for TC-006).
+3. **Warnings** — for hard cases (TC-019, TC-020, TC-024), assert a warning was emitted.
 
 ---
 

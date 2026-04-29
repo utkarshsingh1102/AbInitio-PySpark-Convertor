@@ -17,7 +17,11 @@ from pydantic import BaseModel
 
 from ibm_network.codegen import synthesize
 from ibm_network.codegen.read_strategy import choose as choose_read_strategy
-from ibm_network.codegen.source_emitter import format_read_chain, render_source_read
+from ibm_network.codegen.source_emitter import (
+    format_read_chain,
+    render_raw_schema_source,
+    render_source_read,
+)
 from ibm_network.dml.emitter import render_schema_from_text
 from ibm_network.dml.parser import parse_dml
 from ibm_network.ir.models import Graph
@@ -47,24 +51,35 @@ def api_dml(req: TextRequest) -> dict:
         raise HTTPException(status_code=400, detail=f"DML parse error: {e}") from e
 
     strategy = choose_read_strategy(record)
+    raw_schema_src = render_raw_schema_source(record)
+    # When a read-time schema is needed it IS the schema — use it directly under
+    # the name "schema" so there is only one variable in the generated output.
+    schema_src = raw_schema_src if raw_schema_src is not None else struct_src
     read_src = render_source_read(
         strategy,
         schema_var="schema",
         input_path="<input_path>",
         record=record,
+        raw_schema_var="schema",
     )
     read_fmt = format_read_chain(read_src)
 
-    py_file = (
-        "from pyspark.sql import functions as F\n"
-        "from pyspark.sql.types import (\n"
-        "    StructType, StructField, DecimalType, IntegerType, LongType,\n"
-        "    ShortType, ByteType, StringType, DateType, TimestampType,\n"
-        ")\n\n"
-        f"schema = {struct_src}\n\n"
-        f"df = {read_fmt}\n"
-    )
-    return {"schema_source": struct_src, "read_source": read_fmt, "py_file": py_file}
+    py_parts = [
+        "from pyspark.sql import functions as F",
+        "from pyspark.sql.types import (",
+        "    StructType, StructField, DecimalType, IntegerType, LongType,",
+        "    ShortType, ByteType, StringType, DateType, TimestampType,",
+        ")\n",
+        f"schema = {schema_src}",
+        f"\ndf = {read_fmt}\n",
+    ]
+    py_file = "\n".join(py_parts)
+
+    return {
+        "schema_source": schema_src,
+        "read_source": read_fmt,
+        "py_file": py_file,
+    }
 
 
 @app.post("/api/transform")
